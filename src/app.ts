@@ -10,7 +10,7 @@ export const app = express()
 
 // ── Middlewares globais ───────────────────────
 app.use(cors({
-  origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()),
+  origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
