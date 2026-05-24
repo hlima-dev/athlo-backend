@@ -9,55 +9,41 @@ import { requestLogger } from './middlewares/requestLogger'
 
 export const app = express()
 
-// ─────────────────────────────────────────────
-// CORS FIX DEFINITIVO
-// ─────────────────────────────────────────────
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*')
-  res.header(
-    'Access-Control-Allow-Methods',
-    'GET,POST,PUT,PATCH,DELETE,OPTIONS'
-  )
-  res.header(
-    'Access-Control-Allow-Headers',
-    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
-  )
-  res.header('Access-Control-Allow-Credentials', 'true')
+const allowedOrigins = [
+  'https://athlo-web-admin.vercel.app',
+  'http://localhost:5173',
+]
 
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200)
-  }
+const corsOptions: cors.CorsOptions = {
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
 
-  next()
-})
-
-app.use(cors({
-  origin: true,
+    return callback(null, false)
+  },
   credentials: true,
-}))
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}
 
-// ─────────────────────────────────────────────
-// Middlewares globais
-// ─────────────────────────────────────────────
+// CORS precisa vir ANTES das rotas
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
+
 app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 app.use(requestLogger)
 
-// ─────────────────────────────────────────────
-// Rota raiz
-// ─────────────────────────────────────────────
 app.get('/', (_req, res) => {
-  res.status(200).json({
+  return res.status(200).json({
     status: 'ok',
-    message: 'ATHLO API online 🚀',
+    message: 'ATHLO API online',
   })
 })
 
-// ─────────────────────────────────────────────
-// Health check
-// ─────────────────────────────────────────────
 app.get('/health', (_req, res) => {
-  res.status(200).json({
+  return res.status(200).json({
     status: 'ok',
     app: 'ATHLO API',
     version: '1.0.0',
@@ -66,22 +52,13 @@ app.get('/health', (_req, res) => {
   })
 })
 
-// ─────────────────────────────────────────────
-// Rotas da API
-// ─────────────────────────────────────────────
 app.use('/api/v1', router)
 
-// ─────────────────────────────────────────────
-// 404
-// ─────────────────────────────────────────────
 app.use((_req, res) => {
-  res.status(404).json({
+  return res.status(404).json({
     status: 'error',
     message: 'Rota não encontrada',
   })
 })
 
-// ─────────────────────────────────────────────
-// Error handler
-// ─────────────────────────────────────────────
 app.use(errorHandler)
