@@ -76,7 +76,7 @@ export class TrainingController {
 
   async getById(req: Request, res: Response): Promise<void> {
     const training = await prisma.training.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         coach: { select: { id: true, name: true, avatar: true } },
         athletes: {
@@ -96,14 +96,14 @@ export class TrainingController {
   async update(req: Request, res: Response): Promise<void> {
     const { athleteIds, ...data } = createTrainingSchema.partial().parse(req.body)
     const training = await prisma.training.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data,
     })
     res.status(200).json(successResponse(training, 'Treino atualizado'))
   }
 
   async delete(req: Request, res: Response): Promise<void> {
-    await prisma.training.delete({ where: { id: req.params.id } })
+    await prisma.training.delete({ where: { id: String(req.params.id) } })
     res.status(204).send()
   }
 }

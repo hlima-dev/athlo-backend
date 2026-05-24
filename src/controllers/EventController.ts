@@ -58,7 +58,7 @@ export class EventController {
 
   async getById(req: Request, res: Response): Promise<void> {
     const event = await prisma.event.findUnique({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       include: {
         createdBy: { select: { id: true, name: true } },
         athletes: {
@@ -79,14 +79,14 @@ export class EventController {
   async update(req: Request, res: Response): Promise<void> {
     const data = createEventSchema.partial().parse(req.body)
     const event = await prisma.event.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data,
     })
     res.status(200).json(successResponse(event, 'Evento atualizado'))
   }
 
   async delete(req: Request, res: Response): Promise<void> {
-    await prisma.event.delete({ where: { id: req.params.id } })
+    await prisma.event.delete({ where: { id: String(req.params.id) } })
     res.status(204).send()
   }
 }

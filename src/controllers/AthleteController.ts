@@ -96,7 +96,7 @@ export class AthleteController {
 
   async getById(req: Request, res: Response): Promise<void> {
     const athlete = await athleteService.findById(
-  req.params.id as string
+  String(req.params.id) as string
 )
     res.status(200).json(successResponse(athlete))
   }
@@ -105,7 +105,7 @@ export class AthleteController {
     const data = updateAthleteSchema.parse(req.body)
 
     const athlete = await athleteService.update(
-  req.params.id as string,
+  String(req.params.id) as string,
   data
 )
 
@@ -114,7 +114,7 @@ export class AthleteController {
 
   async delete(req: Request, res: Response): Promise<void> {
     await athleteService.delete(
-  req.params.id as string
+  String(req.params.id) as string
 )
 
     res.status(204).send()

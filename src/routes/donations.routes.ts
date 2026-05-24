@@ -1,34 +1,17 @@
-import { Router } from 'express'
-import { DonationController } from '../controllers/DonationController'
-import { authenticate, authorize } from '../middlewares/auth'
-import { UserRole } from '@prisma/client'
+import { Router } from "express";
 
-const router = Router()
-const controller = new DonationController()
+import { DonationController } from "../controllers/DonationController";
+import { authenticate } from "../middlewares/auth";
 
-// Pública — qualquer pessoa pode fazer doação
-router.post('/', (req, res) => controller.create(req, res))
+const donationRouter = Router();
+const controller = new DonationController();
 
-// Protegidas
-router.get(
-  '/',
-  authenticate,
-  authorize(UserRole.ADMIN),
-  (req, res) => controller.list(req, res),
-)
+donationRouter.post("/", authenticate, (req, res) => {
+  return controller.create(req, res);
+});
 
-router.get(
-  '/summary',
-  authenticate,
-  authorize(UserRole.ADMIN),
-  (req, res) => controller.summary(req, res),
-)
+donationRouter.get("/", authenticate, (req, res) => {
+  return controller.findAll(req, res);
+});
 
-router.patch(
-  '/:id/confirm',
-  authenticate,
-  authorize(UserRole.ADMIN),
-  (req, res) => controller.confirm(req, res),
-)
-
-export { router as donationRouter }
+export { donationRouter };

@@ -50,7 +50,7 @@ export class NotificationController {
 
   async markRead(req: Request, res: Response): Promise<void> {
     const notification = await prisma.notification.update({
-      where: { id: req.params.id },
+      where: { id: String(req.params.id) },
       data: { readAt: new Date() },
     })
     res.status(200).json(successResponse(notification))
