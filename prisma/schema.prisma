@@ -1,0 +1,373 @@
+// ─────────────────────────────────────────────
+//  ATHLO — Prisma Schema
+//  ONG ASDA Sorocaba | Sistema de Atletas
+// ─────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  COACH
+  VOLUNTEER
+  DONOR
+  ATHLETE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+}
+
+enum AmpLevel {
+  // Membros inferiores
+  TRANSFEMORAL      // Acima do joelho
+  TRANSTIBIAL       // Abaixo do joelho
+  HIP_DISARTICULATION
+  BILATERAL_LOWER
+  // Membros superiores
+  TRANSHUMERAL      // Acima do cotovelo
+  TRANSRADIAL       // Abaixo do cotovelo
+  SHOULDER_DISARTICULATION
+  BILATERAL_UPPER
+  // Combinado
+  MULTIPLE
+}
+
+enum Sport {
+  ATHLETICS         // Atletismo
+  SWIMMING          // Natação
+  WHEELCHAIR_BASKETBALL
+  SITTING_VOLLEYBALL
+  CYCLING
+  POWERLIFTING
+  FOOTBALL_5_SIDE
+  TABLE_TENNIS
+  OTHER
+}
+
+enum AthleteStatus {
+  ACTIVE
+  INACTIVE
+  RECOVERING
+  RETIRED
+}
+
+enum EventType {
+  COMPETITION
+  TRAINING_SESSION
+  WORKSHOP
+  MEDICAL_EVALUATION
+  FUNDRAISING
+  COMMUNITY
+  OTHER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  ONGOING
+  FINISHED
+  CANCELLED
+}
+
+enum TrainingType {
+  STRENGTH
+  ENDURANCE
+  TECHNIQUE
+  REHABILITATION
+  FLEXIBILITY
+  MIXED
+}
+
+enum DonationStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
+
+enum DonationMethod {
+  PIX
+  CREDIT_CARD
+  BANK_TRANSFER
+  BOLETO
+  CASH
+  OTHER
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+  ERROR
+  EVENT_REMINDER
+  TRAINING_ASSIGNED
+  DONATION_RECEIVED
+  ACHIEVEMENT_UNLOCKED
+  SYSTEM
+}
+
+// ─── Modelos ─────────────────────────────────
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  password  String
+  role      UserRole   @default(VOLUNTEER)
+  status    UserStatus @default(PENDING)
+  avatar    String?
+  phone     String?
+
+  // Tokens
+  refreshToken  String?
+  passwordResetToken   String?
+  passwordResetExpires DateTime?
+
+  // Relações
+  athlete       Athlete?
+  trainingsCoached  Training[]     @relation("CoachTrainings")
+  donations         Donation[]
+  notifications     Notification[]
+  eventsCreated     Event[]        @relation("EventCreator")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Athlete {
+  id            String        @id @default(cuid())
+  userId        String        @unique
+  registrationCode String?   @unique   // Código interno ASDA
+
+  // Dados pessoais
+  birthDate     DateTime
+  cpf           String?       @unique
+  rg            String?
+  nationality   String        @default("Brasileira")
+  address       String?
+  city          String?
+  state         String?
+  zipCode       String?
+
+  // Dados da amputação
+  ampLevel      AmpLevel
+  ampCause      String?       // Causa da amputação
+  ampDate       DateTime?     // Data da amputação/nascimento
+  laterality    String?       // Direito, esquerdo, bilateral
+  prosthesisType String?
+
+  // Dados esportivos
+  sport         Sport
+  secondarySport Sport?
+  classification String?      // Classificação funcional (ex: T42, F57)
+  startDate     DateTime?     // Início no esporte
+  status        AthleteStatus @default(ACTIVE)
+  height        Float?        // cm
+  weight        Float?        // kg
+  dominantHand  String?
+
+  // Saúde
+  bloodType     String?
+  allergies     String?
+  medications   String?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  medicalNotes  String?       @db.Text
+
+  // Relações
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trainings     TrainingAthlete[]
+  events        EventAthlete[]
+  achievements  Achievement[]
+  metrics       PerformanceMetric[]
+
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("athletes")
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  title       String
+  description String?     @db.Text
+  type        EventType
+  status      EventStatus @default(DRAFT)
+
+  location    String?
+  address     String?
+  city        String?
+  state       String?
+  isOnline    Boolean     @default(false)
+  onlineUrl   String?
+
+  startDate   DateTime
+  endDate     DateTime
+  registrationDeadline DateTime?
+
+  maxParticipants Int?
+  isPublic    Boolean     @default(true)
+  banner      String?
+  tags        String?     // JSON array como string
+
+  createdById String
+  createdBy   User        @relation("EventCreator", fields: [createdById], references: [id])
+
+  athletes    EventAthlete[]
+  trainings   Training[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@map("events")
+}
+
+model EventAthlete {
+  id        String   @id @default(cuid())
+  eventId   String
+  athleteId String
+  confirmedAt DateTime?
+  result    String?
+  notes     String?
+
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  athlete   Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, athleteId])
+  @@map("event_athletes")
+}
+
+model Training {
+  id          String       @id @default(cuid())
+  title       String
+  description String?      @db.Text
+  type        TrainingType
+  sport       Sport
+
+  date        DateTime
+  durationMin Int          // Duração em minutos
+  location    String?
+  notes       String?      @db.Text
+
+  coachId     String?
+  coach       User?        @relation("CoachTrainings", fields: [coachId], references: [id])
+
+  eventId     String?
+  event       Event?       @relation(fields: [eventId], references: [id])
+
+  athletes    TrainingAthlete[]
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("trainings")
+}
+
+model TrainingAthlete {
+  id          String   @id @default(cuid())
+  trainingId  String
+  athleteId   String
+  attended    Boolean  @default(false)
+  performance String?  // Notas de desempenho
+  feedback    String?
+
+  training    Training @relation(fields: [trainingId], references: [id], onDelete: Cascade)
+  athlete     Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([trainingId, athleteId])
+  @@map("training_athletes")
+}
+
+model Donation {
+  id          String         @id @default(cuid())
+  amount      Decimal        @db.Decimal(10, 2)
+  method      DonationMethod
+  status      DonationStatus @default(PENDING)
+
+  donorName   String?
+  donorEmail  String?
+  donorCpf    String?
+  message     String?
+
+  // Referência para doações de usuários cadastrados
+  userId      String?
+  user        User?          @relation(fields: [userId], references: [id])
+
+  // Dados do gateway de pagamento
+  gatewayId   String?
+  gatewayData String?        @db.Text // JSON
+
+  confirmedAt DateTime?
+  receiptUrl  String?
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("donations")
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType @default(INFO)
+  title     String
+  body      String
+  data      String?          // JSON payload extra
+  readAt    DateTime?
+  sentAt    DateTime?
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime         @default(now())
+
+  @@map("notifications")
+}
+
+model Achievement {
+  id          String   @id @default(cuid())
+  athleteId   String
+  title       String
+  description String?
+  date        DateTime
+  competition String?
+  medal       String?  // GOLD, SILVER, BRONZE, HONORABLE
+  document    String?  // URL do certificado/documento
+
+  athlete     Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("achievements")
+}
+
+model PerformanceMetric {
+  id        String   @id @default(cuid())
+  athleteId String
+  date      DateTime
+  sport     Sport
+  metric    String   // Ex: "100m", "Supino", "Nado livre 50m"
+  value     Float    // Valor numérico
+  unit      String   // Ex: "s", "kg", "m"
+  notes     String?
+
+  athlete   Athlete  @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@map("performance_metrics")
+}
