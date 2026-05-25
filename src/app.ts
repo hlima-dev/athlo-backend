@@ -9,71 +9,32 @@ import { requestLogger } from './middlewares/requestLogger'
 
 export const app = express()
 
-// ─────────────────────────────────────────────
-// ORIGENS LIBERADAS
-// ─────────────────────────────────────────────
-const allowedOrigins = [
-  'https://athlo-web-admin.vercel.app',
-  'https://athlo-web-admin-i45czyrcw-hlima-dev1.vercel.app',
-  'http://localhost:5173',
-]
-
-// ─────────────────────────────────────────────
-// CONFIG CORS
-// ─────────────────────────────────────────────
 const corsOptions: cors.CorsOptions = {
   origin(origin, callback) {
-    // Permite requests sem origin (Postman etc)
-    if (!origin) {
+    if (!origin) return callback(null, true)
+
+    const isAllowed =
+      origin === 'http://localhost:5173' ||
+      origin === 'https://athlo-web-admin.vercel.app' ||
+      origin.endsWith('.vercel.app')
+
+    if (isAllowed) {
       return callback(null, true)
     }
 
-    // Permite origins liberadas
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true)
-    }
-
-    // Bloqueia outras
-    return callback(new Error('Not allowed by CORS'))
+    return callback(null, false)
   },
-
   credentials: true,
-
-  methods: [
-    'GET',
-    'POST',
-    'PUT',
-    'PATCH',
-    'DELETE',
-    'OPTIONS',
-  ],
-
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }
 
-// ─────────────────────────────────────────────
-// CORS
-// ─────────────────────────────────────────────
 app.use(cors(corsOptions))
-app.options('*', cors(corsOptions))
 
-// ─────────────────────────────────────────────
-// MIDDLEWARES GLOBAIS
-// ─────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({
-  extended: true,
-  limit: '10mb',
-}))
-
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
 app.use(requestLogger)
 
-// ─────────────────────────────────────────────
-// ROTA RAIZ
-// ─────────────────────────────────────────────
 app.get('/', (_req, res) => {
   return res.status(200).json({
     status: 'ok',
@@ -81,9 +42,6 @@ app.get('/', (_req, res) => {
   })
 })
 
-// ─────────────────────────────────────────────
-// HEALTH CHECK
-// ─────────────────────────────────────────────
 app.get('/health', (_req, res) => {
   return res.status(200).json({
     status: 'ok',
@@ -94,14 +52,8 @@ app.get('/health', (_req, res) => {
   })
 })
 
-// ─────────────────────────────────────────────
-// ROTAS DA API
-// ─────────────────────────────────────────────
 app.use('/api/v1', router)
 
-// ─────────────────────────────────────────────
-// 404
-// ─────────────────────────────────────────────
 app.use((_req, res) => {
   return res.status(404).json({
     status: 'error',
@@ -109,7 +61,4 @@ app.use((_req, res) => {
   })
 })
 
-// ─────────────────────────────────────────────
-// ERROR HANDLER
-// ─────────────────────────────────────────────
 app.use(errorHandler)
