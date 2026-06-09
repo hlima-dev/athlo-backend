@@ -1,60 +1,54 @@
-import { Request, Response } from "express";
+import { Request, Response } from 'express'
+import { z } from 'zod'
+import { prisma } from '../config/prisma'
+import { successResponse, getPagination, paginate } from '../utils/pagination'
+import { DonationMethod, DonationStatus } from '@prisma/client'
 
-import { prisma } from "../config/prisma";
+const createDonationSchema = z.object({
+  amount: z.number().positive('Valor deve ser positivo'),
+  method: z.nativeEnum(DonationMethod),
+  status: z.nativeEnum(DonationStatus).default(DonationStatus.PENDING),
+  donorName: z.string().min(2).optional(),
+  donorEmail: z.string().email().optional(),
+  donorCpf: z.string().optional(),
+  message: z.string().max(500).optional(),
+})
 
 export class DonationController {
-  async create(req: Request, res: Response) {
-    const {
-      amount,
-      method,
-      donorName,
-      donorEmail,
-      donorCpf,
-      message,
-      status,
-    } = req.body;
+  async create(req: Request, res: Response): Promise<void> {
+    const data = createDonationSchema.parse(req.body)
 
-    const donation = await prisma.donation.create({
-      data: {
-        amount,
-        method,
-        donorName,
-        donorEmail,
-        donorCpf,
-        message,
-        status,
-      },
-    });
+    const donation = await prisma.donation.create({ data })
 
-    const admin = await prisma.user.findFirst({
-      where: {
-        role: "ADMIN",
-      },
-    });
+    // Notifica o admin sobre a nova doação
+    const admin = await prisma.user.findFirst({ where: { role: 'ADMIN' } })
 
     if (admin) {
       await prisma.notification.create({
         data: {
           userId: admin.id,
-          type: "DONATION_RECEIVED",
-          title: "Nova doação recebida",
-          body: `${
-            donorName || "Um apoiador"
-          } realizou uma doação de R$ ${amount}.`,
+          type: 'DONATION_RECEIVED',
+          title: 'Nova doação recebida',
+          body: `${data.donorName || 'Um apoiador'} realizou uma doação de R$ ${Number(data.amount).toFixed(2)}.`,
         },
-      });
+      })
     }
 
-    return res.status(201).json(donation);
+    res.status(201).json(successResponse(donation, 'Doação registrada com sucesso'))
   }
 
-  async findAll(req: Request, res: Response) {
-    const donations = await prisma.donation.findMany({
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+  async findAll(req: Request, res: Response): Promise<void> {
+    const pagination = getPagination(req)
 
-    return res.json(donations);
+    const [donations, total] = await Promise.all([
+      prisma.donation.findMany({
+        skip: pagination.skip,
+        take: pagination.limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.donation.count(),
+    ])
+
+    res.status(200).json(successResponse(paginate(donations, total, pagination)))
   }
 }

@@ -1,6 +1,7 @@
-import 'express-async-errors'
+﻿import 'express-async-errors'
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 
 import { env } from './config/env'
 import { router } from './routes'
@@ -9,56 +10,39 @@ import { requestLogger } from './middlewares/requestLogger'
 
 export const app = express()
 
-const corsOptions: cors.CorsOptions = {
-  origin(origin, callback) {
-    if (!origin) return callback(null, true)
+app.use(helmet())
 
-    const isAllowed =
-      origin === 'http://localhost:5173' ||
-      origin === 'https://athlo-web-admin.vercel.app' ||
-      origin.endsWith('.vercel.app')
+const allowedOrigins = env.CORS_ORIGINS.split(',').map((o) => o.trim())
 
-    if (isAllowed) {
-      return callback(null, true)
-    }
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin && env.NODE_ENV !== 'production') return callback(null, true)
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
+      callback(new Error(`Origin ${origin} not allowed by CORS`))
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+)
 
-    return callback(null, false)
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}
-
-app.use(cors(corsOptions))
-
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '2mb' }))
+app.use(express.urlencoded({ extended: true, limit: '2mb' }))
 app.use(requestLogger)
 
 app.get('/', (_req, res) => {
-  return res.status(200).json({
-    status: 'ok',
-    message: 'ATHLO API online 🚀',
-  })
+  return res.status(200).json({ status: 'ok', message: 'ATHLO API online' })
 })
 
 app.get('/health', (_req, res) => {
-  return res.status(200).json({
-    status: 'ok',
-    app: 'ATHLO API',
-    version: '1.0.0',
-    timestamp: new Date().toISOString(),
-    env: env.NODE_ENV,
-  })
+  return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
 app.use('/api/v1', router)
 
 app.use((_req, res) => {
-  return res.status(404).json({
-    status: 'error',
-    message: 'Rota não encontrada',
-  })
+  return res.status(404).json({ status: 'error', message: 'Rota não encontrada' })
 })
 
 app.use(errorHandler)

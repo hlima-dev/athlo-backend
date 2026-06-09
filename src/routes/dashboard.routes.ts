@@ -1,15 +1,10 @@
-import { Router } from "express";
+﻿import { Router } from 'express'
+import { DashboardController } from '../controllers/DashboardController'
+import { authenticate } from '../middlewares/auth'
 
-import { DashboardController } from "../controllers/DashboardController";
+const dashboardRoutes = Router()
+const dashboardController = new DashboardController()
 
-const dashboardRoutes = Router();
+dashboardRoutes.get('/', authenticate, (req, res) => dashboardController.index(req, res))
 
-const dashboardController =
-  new DashboardController();
-
-dashboardRoutes.get(
-  "/",
-  dashboardController.index
-);
-
-export { dashboardRoutes };
+export { dashboardRoutes }

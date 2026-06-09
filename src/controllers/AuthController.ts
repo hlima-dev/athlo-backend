@@ -6,14 +6,16 @@ import { UserRole } from '@prisma/client'
 
 const authService = new AuthService()
 
+const passwordSchema = z
+  .string()
+  .min(8, 'Senha deve ter ao menos 8 caracteres')
+  .regex(/[A-Z]/, 'Senha deve conter ao menos uma letra maiúscula')
+  .regex(/[0-9]/, 'Senha deve conter ao menos um número')
+
 const registerSchema = z.object({
   name: z.string().min(2, 'Nome deve ter ao menos 2 caracteres'),
   email: z.string().email('E-mail inválido'),
-  password: z
-    .string()
-    .min(8, 'Senha deve ter ao menos 8 caracteres')
-    .regex(/[A-Z]/, 'Senha deve conter ao menos uma letra maiúscula')
-    .regex(/[0-9]/, 'Senha deve conter ao menos um número'),
+  password: passwordSchema,
   role: z.nativeEnum(UserRole).optional(),
   phone: z.string().optional(),
 })
@@ -25,6 +27,15 @@ const loginSchema = z.object({
 
 const refreshSchema = z.object({
   refreshToken: z.string().min(1),
+})
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email('E-mail inválido'),
+})
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1, 'Token obrigatório'),
+  password: passwordSchema,
 })
 
 export class AuthController {
@@ -44,6 +55,22 @@ export class AuthController {
     const { refreshToken } = refreshSchema.parse(req.body)
     const tokens = await authService.refreshToken(refreshToken)
     res.status(200).json(successResponse(tokens))
+  }
+
+  async forgotPassword(req: Request, res: Response): Promise<void> {
+    const { email } = forgotPasswordSchema.parse(req.body)
+    const result = await authService.forgotPassword(email)
+
+    res
+      .status(200)
+      .json(successResponse(result, 'Solicitação de recuperação enviada'))
+  }
+
+  async resetPassword(req: Request, res: Response): Promise<void> {
+    const data = resetPasswordSchema.parse(req.body)
+    const result = await authService.resetPassword(data)
+
+    res.status(200).json(successResponse(result, 'Senha redefinida com sucesso'))
   }
 
   async logout(req: Request, res: Response): Promise<void> {
