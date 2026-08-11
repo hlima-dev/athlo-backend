@@ -16,6 +16,15 @@ export class NotificationController {
   async create(req: Request, res: Response): Promise<void> {
     const { data: extraData, ...rest } = createNotificationSchema.parse(req.body)
 
+    // Garante que o destinatário pertence à mesma organização
+    const recipient = await prisma.user.findFirst({
+      where: { id: rest.userId, organizationId: req.user!.organizationId },
+    })
+    if (!recipient) {
+      res.status(404).json({ status: 'error', message: 'Usuário não encontrado' })
+      return
+    }
+
     const notification = await prisma.notification.create({
       data: {
         ...rest,

@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { NotificationController } from '../controllers/NotificationController'
 import { authenticate, authorize } from '../middlewares/auth'
-import { UserRole } from '@prisma/client'
+import { OrgRole } from '@prisma/client'
 
 const router = Router()
 const controller = new NotificationController()
@@ -15,7 +15,7 @@ router.patch('/:id/read', (req, res) => controller.markRead(req, res))
 
 router.post(
   '/',
-  authorize(UserRole.ADMIN),
+  authorize(OrgRole.OWNER, OrgRole.ADMIN),
   (req, res) => controller.create(req, res),
 )
 

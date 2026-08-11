@@ -12,7 +12,7 @@ const envSchema = z.object({
   BCRYPT_SALT_ROUNDS: z.coerce.number().default(12),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
-  EMAIL_FROM: z.string().email().default('noreply@asda-sorocaba.org'),
+  EMAIL_FROM: z.string().email().default('noreply@athlo.app'),
   APP_URL: z.string().url().default('http://localhost:5173'),
 })
 

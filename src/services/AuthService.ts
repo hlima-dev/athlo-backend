@@ -8,15 +8,18 @@ import {
   NotFoundError,
   ConflictError,
 } from '../utils/AppError'
-import { UserRole } from '@prisma/client'
+import { OrgRole } from '@prisma/client'
 import { EmailService } from './EmailService'
 
 interface RegisterInput {
   name: string
   email: string
   password: string
-  role?: UserRole
   phone?: string
+  // Cria uma nova empresa (tenant)
+  organizationName?: string
+  // Ou entra numa empresa existente via convite
+  inviteToken?: string
 }
 
 interface LoginInput {
@@ -31,6 +34,16 @@ interface ResetPasswordInput {
 
 const emailService = new EmailService()
 
+function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)+/g, '') || 'empresa'
+}
+
 export class AuthService {
   async register(input: RegisterInput) {
     const existing = await prisma.user.findUnique({
@@ -43,37 +56,121 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_SALT_ROUNDS)
 
+    // ── Fluxo 1: aceitar convite para uma organização existente ──
+    if (input.inviteToken) {
+      const invite = await prisma.invite.findUnique({
+        where: { token: input.inviteToken },
+      })
+
+      if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) {
+        throw new UnauthorizedError('Convite inválido ou expirado')
+      }
+
+      const [user] = await prisma.$transaction([
+        prisma.user.create({
+          data: {
+            organizationId: invite.organizationId,
+            name: input.name,
+            email: input.email,
+            password: passwordHash,
+            orgRole: invite.role,
+            phone: input.phone,
+          },
+          include: { organization: true },
+        }),
+        prisma.invite.update({
+          where: { id: invite.id },
+          data: { acceptedAt: new Date() },
+        }),
+      ])
+
+      return this.issueSession(user)
+    }
+
+    // ── Fluxo 2: cadastro self-service, cria a empresa (tenant) ──
+    if (!input.organizationName) {
+      throw new ConflictError('Informe o nome da empresa para criar sua conta')
+    }
+
+    const organization = await this.createOrganizationWithTrial(input.organizationName)
+
     const user = await prisma.user.create({
       data: {
+        organizationId: organization.id,
         name: input.name,
         email: input.email,
         password: passwordHash,
-        role: input.role ?? UserRole.VOLUNTEER,
+        orgRole: OrgRole.OWNER,
         phone: input.phone,
       },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        status: true,
-        createdAt: true,
-      },
+      include: { organization: true },
     })
 
-    const tokens = generateTokenPair({ sub: user.id, role: user.role })
+    return this.issueSession(user)
+  }
+
+  private async createOrganizationWithTrial(name: string) {
+    const baseSlug = slugify(name)
+    let slug = baseSlug
+    let attempt = 0
+
+    while (await prisma.organization.findUnique({ where: { slug } })) {
+      attempt += 1
+      slug = `${baseSlug}-${crypto.randomBytes(2).toString('hex')}`
+      if (attempt > 5) break
+    }
+
+    const organization = await prisma.organization.create({
+      data: { name, slug },
+    })
+
+    const defaultPlan = await prisma.plan.findFirst({
+      where: { isActive: true },
+      orderBy: { priceMonthly: 'asc' },
+    })
+
+    if (defaultPlan) {
+      await prisma.subscription.create({
+        data: {
+          organizationId: organization.id,
+          planId: defaultPlan.id,
+          status: 'TRIALING',
+          trialEndsAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 14), // 14 dias
+        },
+      })
+    }
+
+    return organization
+  }
+
+  private async issueSession(user: {
+    id: string
+    organizationId: string
+    orgRole: OrgRole
+    password: string
+    refreshToken: string | null
+    [key: string]: unknown
+  }) {
+    const tokens = generateTokenPair({
+      sub: user.id,
+      organizationId: user.organizationId,
+      orgRole: user.orgRole,
+    })
 
     await prisma.user.update({
       where: { id: user.id },
       data: { refreshToken: tokens.refreshToken },
     })
 
-    return { user, ...tokens }
+    const { password: _, refreshToken: __, ...safeUser } = user
+
+    return { user: safeUser, ...tokens }
   }
 
   async login(input: LoginInput) {
     const user = await prisma.user.findUnique({
       where: { email: input.email },
+      include: { organization: true },
     })
 
     // Mesmo erro independente de o usuário existir — evita user enumeration
@@ -95,16 +192,7 @@ export class AuthService {
       throw new UnauthorizedError('E-mail ou senha inválidos')
     }
 
-    const tokens = generateTokenPair({ sub: user.id, role: user.role })
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
-    })
-
-    const { password: _, refreshToken: __, ...safeUser } = user
-
-    return { user: safeUser, ...tokens }
+    return this.issueSession(user)
   }
 
   async refreshToken(token: string) {
@@ -118,7 +206,11 @@ export class AuthService {
       throw new UnauthorizedError('Refresh token inválido ou revogado')
     }
 
-    const tokens = generateTokenPair({ sub: user.id, role: user.role })
+    const tokens = generateTokenPair({
+      sub: user.id,
+      organizationId: user.organizationId,
+      orgRole: user.orgRole,
+    })
 
     await prisma.user.update({
       where: { id: user.id },
@@ -200,18 +292,13 @@ export class AuthService {
         id: true,
         name: true,
         email: true,
-        role: true,
+        orgRole: true,
         status: true,
         avatar: true,
         phone: true,
         createdAt: true,
-        athlete: {
-          select: {
-            id: true,
-            sport: true,
-            classification: true,
-            status: true,
-          },
+        organization: {
+          include: { subscription: { include: { plan: true } } },
         },
       },
     })

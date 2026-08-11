@@ -1,20 +1,26 @@
 import { Router } from 'express'
 
 import { authRouter } from './auth.routes'
-import { athleteRouter } from './athletes.routes'
+import { organizationRouter } from './organization.routes'
+import { planRouter } from './plans.routes'
+import { inviteRouter } from './invites.routes'
+import { contactRouter } from './contacts.routes'
+import { productRouter } from './products.routes'
+import { invoiceRouter } from './invoices.routes'
 import { eventRouter } from './events.routes'
-import { trainingRouter } from './trainings.routes'
-import { donationRouter } from './donations.routes'
 import { notificationRouter } from './notifications.routes'
 import { dashboardRoutes } from './dashboard.routes'
 
 const router = Router()
 
 router.use('/auth', authRouter)
-router.use('/athletes', athleteRouter)
+router.use('/organization', organizationRouter)
+router.use('/plans', planRouter)
+router.use('/invites', inviteRouter)
+router.use('/contacts', contactRouter)
+router.use('/products', productRouter)
+router.use('/invoices', invoiceRouter)
 router.use('/events', eventRouter)
-router.use('/trainings', trainingRouter)
-router.use('/donations', donationRouter)
 router.use('/notifications', notificationRouter)
 router.use('/dashboard', dashboardRoutes)
 

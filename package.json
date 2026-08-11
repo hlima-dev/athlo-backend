@@ -1,7 +1,7 @@
 {
   "name": "athlo-backend",
   "version": "1.0.0",
-  "description": "ATHLO - Backend API para a ONG ASDA Sorocaba | Sistema de acompanhamento de atletas amputados",
+  "description": "ATHLO - Backend API do SaaS de gestão para pequenas e médias empresas",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

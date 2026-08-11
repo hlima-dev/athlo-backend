@@ -1,10 +1,11 @@
 import jwt from 'jsonwebtoken'
 import { env } from '../config/env'
-import { UserRole } from '@prisma/client'
+import { OrgRole } from '@prisma/client'
 
 interface TokenPayload {
   sub: string
-  role: UserRole
+  organizationId: string
+  orgRole: OrgRole
 }
 
 export function generateAccessToken(payload: TokenPayload): string {

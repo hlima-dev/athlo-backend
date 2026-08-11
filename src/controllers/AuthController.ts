@@ -2,7 +2,6 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { AuthService } from '../services/AuthService'
 import { successResponse } from '../utils/pagination'
-import { UserRole } from '@prisma/client'
 
 const authService = new AuthService()
 
@@ -16,8 +15,9 @@ const registerSchema = z.object({
   name: z.string().min(2, 'Nome deve ter ao menos 2 caracteres'),
   email: z.string().email('E-mail inválido'),
   password: passwordSchema,
-  role: z.nativeEnum(UserRole).optional(),
   phone: z.string().optional(),
+  organizationName: z.string().min(2, 'Nome da empresa deve ter ao menos 2 caracteres').optional(),
+  inviteToken: z.string().optional(),
 })
 
 const loginSchema = z.object({
