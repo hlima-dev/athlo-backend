@@ -3,19 +3,20 @@ import { z } from 'zod'
 
 import { OrganizationService } from '../services/OrganizationService'
 import { successResponse } from '../utils/pagination'
+import { optionalEmail, optionalUrl } from '../utils/validation'
 
 const organizationService = new OrganizationService()
 
 const updateOrganizationSchema = z.object({
   name: z.string().min(2).optional(),
   document: z.string().optional(),
-  email: z.string().email().optional(),
+  email: optionalEmail,
   phone: z.string().optional(),
   address: z.string().optional(),
   city: z.string().optional(),
   state: z.string().optional(),
   zipCode: z.string().optional(),
-  logoUrl: z.string().url().optional(),
+  logoUrl: optionalUrl,
 })
 
 export class OrganizationController {

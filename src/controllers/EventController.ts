@@ -4,6 +4,7 @@ import { prisma } from '../config/prisma'
 import { successResponse, getPagination, paginate } from '../utils/pagination'
 import { EventStatus, EventType } from '@prisma/client'
 import { NotFoundError } from '../utils/AppError'
+import { optionalUrl } from '../utils/validation'
 
 const createEventSchema = z.object({
   title: z.string().min(3),
@@ -12,7 +13,7 @@ const createEventSchema = z.object({
   status: z.nativeEnum(EventStatus).optional(),
   location: z.string().optional(),
   isOnline: z.boolean().default(false),
-  onlineUrl: z.string().url().optional(),
+  onlineUrl: optionalUrl,
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
   allDay: z.boolean().optional(),

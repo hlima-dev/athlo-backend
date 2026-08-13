@@ -3,13 +3,14 @@ import { z } from 'zod'
 
 import { ContactService } from '../services/ContactService'
 import { getPagination, successResponse } from '../utils/pagination'
+import { optionalEmail } from '../utils/validation'
 import { ContactStatus, ContactType } from '@prisma/client'
 
 const contactService = new ContactService()
 
 const createContactSchema = z.object({
   name: z.string().min(2),
-  email: z.string().email().optional(),
+  email: optionalEmail,
   phone: z.string().optional(),
   document: z.string().optional(),
   company: z.string().optional(),
