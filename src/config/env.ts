@@ -14,6 +14,7 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   EMAIL_FROM: z.string().email().default('noreply@athlo.app'),
   APP_URL: z.string().url().default('http://localhost:5173'),
+  ANTHROPIC_API_KEY: z.string().optional(),
 })
 
 const _env = envSchema.safeParse(process.env)

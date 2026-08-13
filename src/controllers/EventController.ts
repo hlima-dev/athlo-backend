@@ -5,6 +5,13 @@ import { successResponse, getPagination, paginate } from '../utils/pagination'
 import { EventStatus, EventType } from '@prisma/client'
 import { NotFoundError } from '../utils/AppError'
 import { optionalUrl } from '../utils/validation'
+import { AiService } from '../services/AiService'
+
+const aiService = new AiService()
+
+const aiParseSchema = z.object({
+  prompt: z.string().min(3, 'Descreva o compromisso em ao menos algumas palavras'),
+})
 
 const createEventSchema = z.object({
   title: z.string().min(3),
@@ -99,5 +106,11 @@ export class EventController {
 
     await prisma.event.delete({ where: { id: existing.id } })
     res.status(204).send()
+  }
+
+  async parseWithAi(req: Request, res: Response): Promise<void> {
+    const { prompt } = aiParseSchema.parse(req.body)
+    const draft = await aiService.parseEventFromPrompt(prompt)
+    res.status(200).json(successResponse(draft))
   }
 }
