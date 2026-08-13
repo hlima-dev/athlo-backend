@@ -5,8 +5,8 @@ import { prisma } from './config/prisma'
 const BANNER = `
 ╔══════════════════════════════════════════╗
 ║                                          ║
-║   🏃  A T H L O   A P I   v1.0.0        ║
-║   ONG ASDA Sorocaba                      ║
+║   🏢  A T H L O   A P I   v1.0.0        ║
+║   SaaS para pequenas e médias empresas   ║
 ║                                          ║
 ╚══════════════════════════════════════════╝
 `
