@@ -24,10 +24,10 @@ export const passwordResetLimiter = rateLimit({
   message: { status: 'error', message: 'Muitas solicitações de recuperação. Tente em 1 hora.' },
 })
 
-export const aiLimiter = rateLimit({
+export const quickParseLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { status: 'error', message: 'Muitas solicitações à IA. Aguarde um instante.' },
+  message: { status: 'error', message: 'Muitas solicitações. Aguarde um instante.' },
 })
