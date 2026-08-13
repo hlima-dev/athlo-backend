@@ -38,6 +38,11 @@ const resetPasswordSchema = z.object({
   password: passwordSchema,
 })
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Senha atual obrigatória'),
+  newPassword: passwordSchema,
+})
+
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
     const data = registerSchema.parse(req.body)
@@ -71,6 +76,13 @@ export class AuthController {
     const result = await authService.resetPassword(data)
 
     res.status(200).json(successResponse(result, 'Senha redefinida com sucesso'))
+  }
+
+  async changePassword(req: Request, res: Response): Promise<void> {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body)
+    const result = await authService.changePassword(req.user!.id, currentPassword, newPassword)
+
+    res.status(200).json(successResponse(result, 'Senha alterada com sucesso'))
   }
 
   async logout(req: Request, res: Response): Promise<void> {
