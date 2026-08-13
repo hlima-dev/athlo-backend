@@ -7,6 +7,7 @@ import { inviteRouter } from './invites.routes'
 import { contactRouter } from './contacts.routes'
 import { productRouter } from './products.routes'
 import { invoiceRouter } from './invoices.routes'
+import { orderRouter } from './orders.routes'
 import { eventRouter } from './events.routes'
 import { notificationRouter } from './notifications.routes'
 import { dashboardRoutes } from './dashboard.routes'
@@ -20,6 +21,7 @@ router.use('/invites', inviteRouter)
 router.use('/contacts', contactRouter)
 router.use('/products', productRouter)
 router.use('/invoices', invoiceRouter)
+router.use('/orders', orderRouter)
 router.use('/events', eventRouter)
 router.use('/notifications', notificationRouter)
 router.use('/dashboard', dashboardRoutes)

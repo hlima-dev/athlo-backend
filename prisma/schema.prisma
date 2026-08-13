@@ -104,6 +104,42 @@ enum NotificationType {
   SYSTEM
 }
 
+enum OrderType {
+  DELIVERY
+  PICKUP
+}
+
+enum OrderStatus {
+  CREATED
+  CONFIRMED
+  IN_PREPARATION
+  OUT_FOR_DELIVERY
+  DELIVERED
+  CANCELED
+}
+
+enum OrderPaymentStatus {
+  PENDING
+  PAID
+  REFUNDED
+}
+
+enum OrderPaymentMethod {
+  PIX
+  CREDIT_CARD
+  DEBIT_CARD
+  CASH
+  BANK_TRANSFER
+  ONLINE
+  OTHER
+}
+
+enum OrderOrigin {
+  MANUAL
+  CALLCENTER
+  SITE
+}
+
 // ─── Tenant / Billing ────────────────────────
 
 model Organization {
@@ -126,6 +162,7 @@ model Organization {
   invoices     Invoice[]
   events       Event[]
   invites      Invite[]
+  orders       Order[]
   subscription Subscription?
 
   createdAt DateTime @default(now())
@@ -221,6 +258,7 @@ model User {
   eventsAssigned   Event[]        @relation("EventAssignee")
   invoicesCreated  Invoice[]
   invitesSent      Invite[]       @relation("InviteSender")
+  ordersOperated   Order[]        @relation("OrderOperator")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -253,6 +291,7 @@ model Contact {
 
   invoices Invoice[]
   events   Event[]
+  orders   Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -274,6 +313,8 @@ model Product {
   type        ProductType @default(PRODUCT)
   price       Decimal     @db.Decimal(10, 2)
   active      Boolean     @default(true)
+
+  orderItems OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -309,6 +350,64 @@ model Invoice {
 
   @@index([organizationId])
   @@map("invoices")
+}
+
+// ─── Pedidos ─────────────────────────────────
+
+model Order {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  contactId String?
+  contact   Contact? @relation(fields: [contactId], references: [id])
+
+  customerName  String
+  customerPhone String?
+
+  type   OrderType   @default(DELIVERY)
+  status OrderStatus @default(CREATED)
+  origin OrderOrigin @default(MANUAL)
+
+  paymentMethod OrderPaymentMethod @default(PIX)
+  paymentStatus OrderPaymentStatus @default(PENDING)
+
+  address String?
+  city    String?
+  state   String?
+  zipCode String?
+  notes   String? @db.Text
+
+  scheduledAt DateTime?
+  total       Decimal   @db.Decimal(10, 2)
+
+  operatorId String?
+  operator   User?   @relation("OrderOperator", fields: [operatorId], references: [id])
+
+  items OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id      String @id @default(cuid())
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id])
+
+  name      String
+  quantity  Int     @default(1)
+  unitPrice Decimal @db.Decimal(10, 2)
+  total     Decimal @db.Decimal(10, 2)
+
+  @@index([orderId])
+  @@map("order_items")
 }
 
 // ─── Agenda ──────────────────────────────────

@@ -14,6 +14,7 @@ export class DashboardController {
       usersCount,
       eventsCount,
       pendingInvoicesCount,
+      openOrdersCount,
       revenueThisMonth,
       allReceivables,
       allContacts,
@@ -23,6 +24,9 @@ export class DashboardController {
       prisma.user.count({ where: { organizationId } }),
       prisma.event.count({ where: { organizationId } }),
       prisma.invoice.count({ where: { organizationId, status: 'PENDING' } }),
+      prisma.order.count({
+        where: { organizationId, status: { notIn: ['DELIVERED', 'CANCELED'] } },
+      }),
       prisma.invoice.aggregate({
         _sum: { amount: true },
         where: {
@@ -80,6 +84,7 @@ export class DashboardController {
         users: usersCount,
         events: eventsCount,
         pendingInvoices: pendingInvoicesCount,
+        openOrders: openOrdersCount,
         revenue: Number(revenueThisMonth._sum.amount ?? 0).toFixed(2),
         revenueData,
         growthData,
