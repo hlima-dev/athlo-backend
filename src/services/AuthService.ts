@@ -311,6 +311,25 @@ export class AuthService {
     return { message: 'Senha alterada com sucesso.' }
   }
 
+  async updateProfile(userId: string, input: { name?: string; phone?: string; avatar?: string }) {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: input,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        orgRole: true,
+        status: true,
+        avatar: true,
+        phone: true,
+        createdAt: true,
+      },
+    })
+
+    return user
+  }
+
   async me(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },

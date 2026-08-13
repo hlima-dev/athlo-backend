@@ -19,6 +19,7 @@ router.post('/reset-password', passwordResetLimiter, (req, res) =>
 
 router.post('/logout', authenticate, (req, res) => controller.logout(req, res))
 router.get('/me', authenticate, (req, res) => controller.me(req, res))
+router.patch('/me', authenticate, (req, res) => controller.updateProfile(req, res))
 router.post('/change-password', authenticate, passwordResetLimiter, (req, res) =>
   controller.changePassword(req, res)
 )

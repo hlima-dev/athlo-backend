@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 import { AuthService } from '../services/AuthService'
 import { successResponse } from '../utils/pagination'
+import { optionalUrl } from '../utils/validation'
 
 const authService = new AuthService()
 
@@ -41,6 +42,12 @@ const resetPasswordSchema = z.object({
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Senha atual obrigatória'),
   newPassword: passwordSchema,
+})
+
+const updateProfileSchema = z.object({
+  name: z.string().min(2, 'Nome deve ter ao menos 2 caracteres').optional(),
+  phone: z.string().optional(),
+  avatar: optionalUrl,
 })
 
 export class AuthController {
@@ -93,5 +100,11 @@ export class AuthController {
   async me(req: Request, res: Response): Promise<void> {
     const user = await authService.me(req.user!.id)
     res.status(200).json(successResponse(user))
+  }
+
+  async updateProfile(req: Request, res: Response): Promise<void> {
+    const data = updateProfileSchema.parse(req.body)
+    const user = await authService.updateProfile(req.user!.id, data)
+    res.status(200).json(successResponse(user, 'Perfil atualizado com sucesso'))
   }
 }
