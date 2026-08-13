@@ -14,11 +14,24 @@ app.use(helmet())
 
 const allowedOrigins = env.CORS_ORIGINS.split(',').map((o) => o.trim())
 
+// Previews do Vercel geram uma URL única por deploy (*.vercel.app) — liberamos
+// qualquer subdomínio vercel.app automaticamente, além da lista explícita de
+// CORS_ORIGINS (usada para produção e outros domínios fixos).
+function isAllowedOrigin(origin: string): boolean {
+  if (allowedOrigins.includes(origin)) return true
+  try {
+    const { hostname, protocol } = new URL(origin)
+    return protocol === 'https:' && hostname.endsWith('.vercel.app')
+  } catch {
+    return false
+  }
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin && env.NODE_ENV !== 'production') return callback(null, true)
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
+      if (!origin || isAllowedOrigin(origin)) return callback(null, true)
       callback(new Error(`Origin ${origin} not allowed by CORS`))
     },
     credentials: true,
