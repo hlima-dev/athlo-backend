@@ -7,6 +7,10 @@ import { optionalEmail, optionalUrl } from '../utils/validation'
 
 const organizationService = new OrganizationService()
 
+const deleteOrganizationSchema = z.object({
+  password: z.string().min(1, 'Senha obrigatória'),
+})
+
 const updateOrganizationSchema = z.object({
   name: z.string().min(2).optional(),
   document: z.string().optional(),
@@ -34,5 +38,15 @@ export class OrganizationController {
   async members(req: Request, res: Response): Promise<void> {
     const members = await organizationService.listMembers(req.user!.organizationId)
     res.status(200).json(successResponse(members))
+  }
+
+  async remove(req: Request, res: Response): Promise<void> {
+    const { password } = deleteOrganizationSchema.parse(req.body)
+    const result = await organizationService.deleteOrganization(
+      req.user!.organizationId,
+      req.user!.id,
+      password,
+    )
+    res.status(200).json(successResponse(result))
   }
 }

@@ -27,4 +27,18 @@ router.post(
   (req, res) => subscriptionController.cancel(req, res),
 )
 
+router.post(
+  '/subscription/checkout',
+  authenticate,
+  authorize(OrgRole.OWNER, OrgRole.ADMIN),
+  (req, res) => subscriptionController.checkout(req, res),
+)
+
+router.post(
+  '/subscription/portal',
+  authenticate,
+  authorize(OrgRole.OWNER, OrgRole.ADMIN),
+  (req, res) => subscriptionController.portal(req, res),
+)
+
 export { router as planRouter }

@@ -84,6 +84,7 @@ export class AuthService {
         }),
       ])
 
+      await this.sendVerificationEmail(user.id, user.email, user.name)
       return this.issueSession(user)
     }
 
@@ -106,6 +107,7 @@ export class AuthService {
       include: { organization: true },
     })
 
+    await this.sendVerificationEmail(user.id, user.email, user.name)
     return this.issueSession(user)
   }
 
@@ -162,7 +164,20 @@ export class AuthService {
       data: { refreshToken: tokens.refreshToken },
     })
 
-    const { password: _, refreshToken: __, ...safeUser } = user
+    const {
+      password: _password,
+      refreshToken: _refreshToken,
+      passwordResetToken: _passwordResetToken,
+      passwordResetExpires: _passwordResetExpires,
+      emailVerifyToken: _emailVerifyToken,
+      emailVerifyExpires: _emailVerifyExpires,
+      ...safeUser
+    } = user as typeof user & {
+      passwordResetToken?: unknown
+      passwordResetExpires?: unknown
+      emailVerifyToken?: unknown
+      emailVerifyExpires?: unknown
+    }
 
     return { user: safeUser, ...tokens }
   }
@@ -328,6 +343,65 @@ export class AuthService {
     })
 
     return user
+  }
+
+  async sendVerificationEmail(userId: string, email: string, name: string) {
+    const token = crypto.randomBytes(32).toString('hex')
+    const expires = new Date(Date.now() + 1000 * 60 * 60 * 24) // 24h
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerifyToken: token,
+        emailVerifyExpires: expires,
+      },
+    })
+
+    try {
+      await emailService.sendEmailVerification(email, name, token)
+    } catch (err) {
+      console.error('Erro ao enviar e-mail de verificação:', err)
+    }
+  }
+
+  async verifyEmail(token: string) {
+    const user = await prisma.user.findFirst({
+      where: {
+        emailVerifyToken: token,
+        emailVerifyExpires: { gt: new Date() },
+      },
+    })
+
+    if (!user) {
+      throw new UnauthorizedError('Token inválido ou expirado')
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerifiedAt: new Date(),
+        emailVerifyToken: null,
+        emailVerifyExpires: null,
+      },
+    })
+
+    return { message: 'E-mail verificado com sucesso.' }
+  }
+
+  async resendVerificationEmail(userId: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+
+    if (!user) {
+      throw new NotFoundError('Usuário')
+    }
+
+    if (user.emailVerifiedAt) {
+      return { message: 'E-mail já verificado.' }
+    }
+
+    await this.sendVerificationEmail(user.id, user.email, user.name)
+
+    return { message: 'E-mail de verificação reenviado.' }
   }
 
   async me(userId: string) {

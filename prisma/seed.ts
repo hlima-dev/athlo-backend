@@ -96,6 +96,8 @@ async function main() {
       password: ownerPassword,
       orgRole: OrgRole.OWNER,
       status: UserStatus.ACTIVE,
+      isPlatformAdmin: true, // equipe ATHLO — administra a plataforma inteira
+      emailVerifiedAt: new Date(),
     },
   })
 

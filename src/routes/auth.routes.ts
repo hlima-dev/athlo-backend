@@ -24,4 +24,9 @@ router.post('/change-password', authenticate, passwordResetLimiter, (req, res) =
   controller.changePassword(req, res)
 )
 
+router.post('/verify-email', passwordResetLimiter, (req, res) => controller.verifyEmail(req, res))
+router.post('/resend-verification', authenticate, passwordResetLimiter, (req, res) =>
+  controller.resendVerification(req, res)
+)
+
 export { router as authRouter }

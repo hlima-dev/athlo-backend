@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma'
 import { NotFoundError, ValidationError } from '../utils/AppError'
 import { getPagination, paginate, PaginationParams } from '../utils/pagination'
+import { EmailService } from './EmailService'
 import {
   OrderOrigin,
   OrderPaymentMethod,
@@ -8,6 +9,17 @@ import {
   OrderStatus,
   OrderType,
 } from '@prisma/client'
+
+const emailService = new EmailService()
+
+const orderStatusLabels: Record<OrderStatus, string> = {
+  CREATED: 'Criado',
+  CONFIRMED: 'Confirmado',
+  IN_PREPARATION: 'Em preparo',
+  OUT_FOR_DELIVERY: 'Saiu para entrega',
+  DELIVERED: 'Entregue',
+  CANCELED: 'Cancelado',
+}
 
 interface OrderItemInput {
   productId?: string
@@ -50,7 +62,7 @@ function computeTotal(items: OrderItemInput[]) {
 }
 
 const orderInclude = {
-  contact: { select: { id: true, name: true, phone: true } },
+  contact: { select: { id: true, name: true, phone: true, email: true } },
   operator: { select: { id: true, name: true } },
   items: { include: { product: { select: { id: true, name: true } } } },
 }
@@ -187,7 +199,7 @@ export class OrderService {
   async updateStatus(organizationId: string, id: string, status: OrderStatus) {
     await this.findById(organizationId, id)
 
-    return prisma.order.update({
+    const order = await prisma.order.update({
       where: { id },
       data: {
         status,
@@ -195,6 +207,21 @@ export class OrderService {
       },
       include: orderInclude,
     })
+
+    if (order.contact?.email) {
+      try {
+        await emailService.sendOrderStatusUpdate(
+          order.contact.email,
+          order.contact.name,
+          order.customerName,
+          orderStatusLabels[status],
+        )
+      } catch (err) {
+        console.error('Erro ao enviar e-mail de atualização de pedido:', err)
+      }
+    }
+
+    return order
   }
 
   async delete(organizationId: string, id: string) {

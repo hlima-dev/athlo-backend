@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma'
-import { NotFoundError } from '../utils/AppError'
+import { ConflictError, NotFoundError } from '../utils/AppError'
 import { getPagination, paginate, PaginationParams } from '../utils/pagination'
 import { ContactStatus, ContactType } from '@prisma/client'
 
@@ -29,6 +29,20 @@ interface ListContactsFilter {
 
 export class ContactService {
   async create(organizationId: string, input: CreateContactInput) {
+    const subscription = await prisma.subscription.findUnique({
+      where: { organizationId },
+      include: { plan: true },
+    })
+
+    if (subscription?.plan) {
+      const contactsCount = await prisma.contact.count({ where: { organizationId } })
+      if (contactsCount >= subscription.plan.maxContacts) {
+        throw new ConflictError(
+          `Seu plano permite até ${subscription.plan.maxContacts} contatos. Faça upgrade para cadastrar mais.`,
+        )
+      }
+    }
+
     const { tags, ...rest } = input
 
     return prisma.contact.create({

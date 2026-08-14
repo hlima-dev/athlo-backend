@@ -247,6 +247,15 @@ model User {
   avatar   String?
   phone    String?
 
+  // Administrador da plataforma ATHLO (equipe do próprio SaaS, não do cliente).
+  // Enxerga todas as organizações — não confundir com OrgRole.OWNER, que é
+  // o dono de uma empresa cliente.
+  isPlatformAdmin Boolean @default(false)
+
+  emailVerifiedAt      DateTime?
+  emailVerifyToken     String?
+  emailVerifyExpires   DateTime?
+
   // Tokens
   refreshToken         String?
   passwordResetToken   String?

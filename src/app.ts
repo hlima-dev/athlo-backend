@@ -7,6 +7,7 @@ import { env } from './config/env'
 import { router } from './routes'
 import { errorHandler } from './middlewares/errorHandler'
 import { requestLogger } from './middlewares/requestLogger'
+import { StripeWebhookController } from './controllers/StripeWebhookController'
 
 export const app = express()
 
@@ -38,6 +39,16 @@ app.use(
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   })
+)
+
+// Webhook do Stripe precisa do corpo bruto (Buffer) para validar a
+// assinatura — por isso é montado antes do express.json() global, que
+// converteria o corpo em objeto e quebraria a verificação.
+const stripeWebhookController = new StripeWebhookController()
+app.post(
+  '/api/v1/stripe/webhook',
+  express.raw({ type: 'application/json' }),
+  (req, res) => stripeWebhookController.handle(req, res),
 )
 
 app.use(express.json({ limit: '2mb' }))

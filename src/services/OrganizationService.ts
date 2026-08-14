@@ -1,5 +1,9 @@
+import bcrypt from 'bcryptjs'
 import { prisma } from '../config/prisma'
-import { NotFoundError } from '../utils/AppError'
+import { NotFoundError, UnauthorizedError } from '../utils/AppError'
+import { StripeService } from './StripeService'
+
+const stripeService = new StripeService()
 
 interface UpdateOrganizationInput {
   name?: string
@@ -33,6 +37,38 @@ export class OrganizationService {
   async update(id: string, input: UpdateOrganizationInput) {
     await this.findById(id)
     return prisma.organization.update({ where: { id }, data: input })
+  }
+
+  // LGPD — exclusão definitiva da empresa e cascata de todos os dados
+  // (usuários, contatos, produtos, faturas, pedidos, eventos, convites).
+  // Exige confirmação de senha do usuário OWNER que solicita a exclusão.
+  async deleteOrganization(organizationId: string, userId: string, password: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+
+    if (!user) {
+      throw new NotFoundError('Usuário')
+    }
+
+    const passwordMatch = await bcrypt.compare(password, user.password)
+    if (!passwordMatch) {
+      throw new UnauthorizedError('Senha incorreta')
+    }
+
+    const subscription = await prisma.subscription.findUnique({
+      where: { organizationId },
+    })
+
+    if (subscription?.stripeSubscriptionId) {
+      try {
+        await stripeService.cancelStripeSubscription(subscription.stripeSubscriptionId)
+      } catch (err) {
+        console.error('Erro ao cancelar assinatura Stripe na exclusão da empresa:', err)
+      }
+    }
+
+    await prisma.organization.delete({ where: { id: organizationId } })
+
+    return { message: 'Empresa e todos os dados associados foram excluídos permanentemente.' }
   }
 
   async listMembers(organizationId: string) {

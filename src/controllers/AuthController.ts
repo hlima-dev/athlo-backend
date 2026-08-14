@@ -44,6 +44,10 @@ const changePasswordSchema = z.object({
   newPassword: passwordSchema,
 })
 
+const verifyEmailSchema = z.object({
+  token: z.string().min(1, 'Token obrigatório'),
+})
+
 const updateProfileSchema = z.object({
   name: z.string().min(2, 'Nome deve ter ao menos 2 caracteres').optional(),
   phone: z.string().optional(),
@@ -106,5 +110,16 @@ export class AuthController {
     const data = updateProfileSchema.parse(req.body)
     const user = await authService.updateProfile(req.user!.id, data)
     res.status(200).json(successResponse(user, 'Perfil atualizado com sucesso'))
+  }
+
+  async verifyEmail(req: Request, res: Response): Promise<void> {
+    const { token } = verifyEmailSchema.parse(req.body)
+    const result = await authService.verifyEmail(token)
+    res.status(200).json(successResponse(result, 'E-mail verificado com sucesso'))
+  }
+
+  async resendVerification(req: Request, res: Response): Promise<void> {
+    const result = await authService.resendVerificationEmail(req.user!.id)
+    res.status(200).json(successResponse(result))
   }
 }

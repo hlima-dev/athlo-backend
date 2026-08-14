@@ -17,4 +17,10 @@ router.patch(
   (req, res) => controller.update(req, res),
 )
 
+router.delete(
+  '/me',
+  authorize(OrgRole.OWNER),
+  (req, res) => controller.remove(req, res),
+)
+
 export { router as organizationRouter }

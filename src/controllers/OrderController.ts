@@ -2,7 +2,9 @@ import { Request, Response } from 'express'
 import { z } from 'zod'
 
 import { OrderService } from '../services/OrderService'
+import { PdfService, formatCurrency, formatDate } from '../services/PdfService'
 import { getPagination, successResponse } from '../utils/pagination'
+import { prisma } from '../config/prisma'
 import {
   OrderOrigin,
   OrderPaymentMethod,
@@ -12,6 +14,37 @@ import {
 } from '@prisma/client'
 
 const orderService = new OrderService()
+const pdfService = new PdfService()
+
+const typeLabels: Record<string, string> = {
+  DELIVERY: 'Entrega',
+  PICKUP: 'Retirada',
+}
+
+const statusLabels: Record<string, string> = {
+  CREATED: 'Criado',
+  CONFIRMED: 'Confirmado',
+  IN_PREPARATION: 'Em preparo',
+  OUT_FOR_DELIVERY: 'Saiu para entrega',
+  DELIVERED: 'Entregue',
+  CANCELED: 'Cancelado',
+}
+
+const paymentMethodLabels: Record<string, string> = {
+  PIX: 'PIX',
+  CREDIT_CARD: 'Cartão de crédito',
+  DEBIT_CARD: 'Cartão de débito',
+  CASH: 'Dinheiro',
+  BANK_TRANSFER: 'Transferência',
+  ONLINE: 'Online',
+  OTHER: 'Outro',
+}
+
+const paymentStatusLabels: Record<string, string> = {
+  PENDING: 'A receber',
+  PAID: 'Pago',
+  REFUNDED: 'Estornado',
+}
 
 const orderItemSchema = z.object({
   productId: z.string().optional(),
@@ -89,5 +122,70 @@ export class OrderController {
   async delete(req: Request, res: Response): Promise<void> {
     await orderService.delete(req.user!.organizationId, String(req.params.id))
     res.status(204).send()
+  }
+
+  async generatePdf(req: Request, res: Response): Promise<void> {
+    const order = await orderService.findById(req.user!.organizationId, String(req.params.id))
+    const organization = await prisma.organization.findUnique({
+      where: { id: req.user!.organizationId },
+    })
+
+    pdfService.streamDocument(res, `pedido-${order.id}.pdf`, (doc) => {
+      pdfService.header(doc, organization?.name || 'ATHLO', 'Pedido')
+
+      pdfService.field(doc, 'Cliente:', order.customerName)
+      if (order.customerPhone) pdfService.field(doc, 'Telefone:', order.customerPhone)
+      pdfService.field(doc, 'Tipo:', typeLabels[order.type] || order.type)
+      pdfService.field(doc, 'Status:', statusLabels[order.status] || order.status)
+      pdfService.field(
+        doc,
+        'Pagamento:',
+        `${paymentMethodLabels[order.paymentMethod] || order.paymentMethod} — ${
+          paymentStatusLabels[order.paymentStatus] || order.paymentStatus
+        }`,
+      )
+      if (order.scheduledAt) pdfService.field(doc, 'Agendado para:', formatDate(order.scheduledAt))
+
+      if (order.type === 'DELIVERY' && order.address) {
+        const addressParts = [order.address, order.city, order.state, order.zipCode]
+          .filter(Boolean)
+          .join(', ')
+        pdfService.field(doc, 'Endereço de entrega:', addressParts)
+      }
+
+      doc.moveDown(0.5)
+      doc.fontSize(11).fillColor('#0f172a').text('Itens do pedido', { underline: true })
+      doc.moveDown(0.3)
+
+      order.items.forEach((item) => {
+        doc
+          .fontSize(10)
+          .fillColor('#0f172a')
+          .text(
+            `${item.quantity}x ${item.name} — ${formatCurrency(item.unitPrice)} = ${formatCurrency(item.total)}`,
+          )
+      })
+
+      doc.moveDown(0.5)
+      doc
+        .strokeColor('#e2e8f0')
+        .moveTo(doc.x, doc.y)
+        .lineTo(doc.page.width - doc.page.margins.right, doc.y)
+        .stroke()
+      doc.moveDown(0.5)
+
+      doc.fontSize(13).fillColor('#0891b2').text(`Total: ${formatCurrency(order.total)}`)
+
+      if (order.notes) {
+        doc.moveDown(0.8)
+        pdfService.field(doc, 'Observações:', order.notes)
+      }
+
+      doc.moveDown(1.5)
+      doc
+        .fontSize(8)
+        .fillColor('#94a3b8')
+        .text(`Gerado em ${formatDate(new Date())} — ATHLO`, { align: 'center' })
+    })
   }
 }

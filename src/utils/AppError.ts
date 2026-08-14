@@ -41,3 +41,9 @@ export class ValidationError extends AppError {
     super(message, 422)
   }
 }
+
+export class PaymentRequiredError extends AppError {
+  constructor(message = 'Assinatura inativa ou período de teste encerrado') {
+    super(message, 402)
+  }
+}

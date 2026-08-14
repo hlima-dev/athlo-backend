@@ -14,6 +14,14 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   EMAIL_FROM: z.string().email().default('noreply@athlo.app'),
   APP_URL: z.string().url().default('http://localhost:5173'),
+
+  // Stripe — opcionais. Sem eles, os endpoints de cobrança respondem com
+  // erro amigável em vez de derrubar o servidor (mesmo padrão do resto do
+  // projeto para integrações externas).
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  STRIPE_PRICE_ID_STARTER: z.string().optional(),
+  STRIPE_PRICE_ID_PRO: z.string().optional(),
 })
 
 const _env = envSchema.safeParse(process.env)
