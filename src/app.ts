@@ -7,6 +7,7 @@ import { env } from './config/env'
 import { router } from './routes'
 import { errorHandler } from './middlewares/errorHandler'
 import { requestLogger } from './middlewares/requestLogger'
+import { generalLimiter } from './middlewares/rateLimiter'
 import { StripeWebhookController } from './controllers/StripeWebhookController'
 
 export const app = express()
@@ -63,7 +64,11 @@ app.get('/health', (_req, res) => {
   return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
 })
 
-app.use('/api/v1', router)
+// Limite geral de requisições por IP — as rotas de autenticação já têm
+// limites mais rígidos próprios (authLimiter, passwordResetLimiter); este
+// cobre o restante da API (contatos, financeiro, pedidos etc.), que antes
+// não tinha nenhum limite de taxa.
+app.use('/api/v1', generalLimiter, router)
 
 app.use((_req, res) => {
   return res.status(404).json({ status: 'error', message: 'Rota não encontrada' })
