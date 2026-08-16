@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express'
 import jwt from 'jsonwebtoken'
 import { env } from '../config/env'
 import { UnauthorizedError, ForbiddenError } from '../utils/AppError'
+import { ACCESS_COOKIE } from '../utils/authCookies'
 import { OrgRole } from '@prisma/client'
 
 interface JwtPayload {
@@ -25,13 +26,18 @@ declare global {
 }
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
+  // Fonte principal: cookie httpOnly (login/registro passaram a setar
+  // assim). Mantemos o header Bearer como alternativa para chamadas
+  // server-to-server ou uso via ferramentas tipo Postman.
+  const cookieToken = req.cookies?.[ACCESS_COOKIE]
   const authorization = req.headers.authorization
+  const headerToken = authorization?.startsWith('Bearer ') ? authorization.split(' ')[1] : undefined
 
-  if (!authorization || !authorization.startsWith('Bearer ')) {
+  const token = cookieToken || headerToken
+
+  if (!token) {
     throw new UnauthorizedError('Token de autenticação não fornecido')
   }
-
-  const token = authorization.split(' ')[1]
 
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET) as JwtPayload

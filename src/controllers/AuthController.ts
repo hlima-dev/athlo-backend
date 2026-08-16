@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { AuthService } from '../services/AuthService'
 import { successResponse } from '../utils/pagination'
 import { optionalUrl } from '../utils/validation'
+import { setAuthCookies, clearAuthCookies, REFRESH_COOKIE } from '../utils/authCookies'
+import { UnauthorizedError } from '../utils/AppError'
 
 const authService = new AuthService()
 
@@ -24,10 +26,6 @@ const registerSchema = z.object({
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
-})
-
-const refreshSchema = z.object({
-  refreshToken: z.string().min(1),
 })
 
 const forgotPasswordSchema = z.object({
@@ -57,20 +55,27 @@ const updateProfileSchema = z.object({
 export class AuthController {
   async register(req: Request, res: Response): Promise<void> {
     const data = registerSchema.parse(req.body)
-    const result = await authService.register(data)
-    res.status(201).json(successResponse(result, 'Cadastro realizado com sucesso'))
+    const { user, accessToken, refreshToken } = await authService.register(data)
+    const csrfToken = setAuthCookies(res, { accessToken, refreshToken })
+    res.status(201).json(successResponse({ user, csrfToken }, 'Cadastro realizado com sucesso'))
   }
 
   async login(req: Request, res: Response): Promise<void> {
     const data = loginSchema.parse(req.body)
-    const result = await authService.login(data)
-    res.status(200).json(successResponse(result, 'Login realizado com sucesso'))
+    const { user, accessToken, refreshToken } = await authService.login(data)
+    const csrfToken = setAuthCookies(res, { accessToken, refreshToken })
+    res.status(200).json(successResponse({ user, csrfToken }, 'Login realizado com sucesso'))
   }
 
   async refresh(req: Request, res: Response): Promise<void> {
-    const { refreshToken } = refreshSchema.parse(req.body)
+    const refreshToken = req.cookies?.[REFRESH_COOKIE]
+    if (!refreshToken) {
+      throw new UnauthorizedError('Sessão expirada. Faça login novamente.')
+    }
+
     const tokens = await authService.refreshToken(refreshToken)
-    res.status(200).json(successResponse(tokens))
+    const csrfToken = setAuthCookies(res, tokens)
+    res.status(200).json(successResponse({ csrfToken }))
   }
 
   async forgotPassword(req: Request, res: Response): Promise<void> {
@@ -98,6 +103,7 @@ export class AuthController {
 
   async logout(req: Request, res: Response): Promise<void> {
     await authService.logout(req.user!.id)
+    clearAuthCookies(res)
     res.status(204).send()
   }
 
