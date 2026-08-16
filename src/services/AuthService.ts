@@ -34,6 +34,12 @@ interface ResetPasswordInput {
 
 const emailService = new EmailService()
 
+// Bloqueio por força bruta na própria conta — complementa o authLimiter
+// (que só limita por IP e não impede alguém de trocar de IP a cada
+// tentativa contra a mesma conta).
+const MAX_FAILED_LOGIN_ATTEMPTS = 5
+const LOCKOUT_DURATION_MS = 1000 * 60 * 15 // 15 minutos
+
 function slugify(text: string): string {
   return text
     .normalize('NFD')
@@ -201,10 +207,34 @@ export class AuthService {
       throw new UnauthorizedError('Conta inativa.')
     }
 
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new UnauthorizedError(
+        'Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em alguns minutos ou redefina sua senha.',
+      )
+    }
+
     const passwordMatch = await bcrypt.compare(input.password, user.password)
 
     if (!passwordMatch) {
+      const attempts = user.failedLoginAttempts + 1
+      const lockingNow = attempts >= MAX_FAILED_LOGIN_ATTEMPTS
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedLoginAttempts: lockingNow ? 0 : attempts,
+          lockedUntil: lockingNow ? new Date(Date.now() + LOCKOUT_DURATION_MS) : null,
+        },
+      })
+
       throw new UnauthorizedError('E-mail ou senha inválidos')
+    }
+
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      })
     }
 
     return this.issueSession(user)
@@ -294,6 +324,8 @@ export class AuthService {
         passwordResetToken: null,
         passwordResetExpires: null,
         refreshToken: null,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
       },
     })
 

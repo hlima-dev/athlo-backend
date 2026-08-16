@@ -256,6 +256,12 @@ model User {
   emailVerifyToken     String?
   emailVerifyExpires   DateTime?
 
+  // Bloqueio por força bruta na própria conta — complementa o rate limit
+  // por IP (authLimiter), que sozinho não impede alguém de tentar a senha
+  // de UMA conta específica trocando de IP a cada tentativa.
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+
   // Tokens
   refreshToken         String?
   passwordResetToken   String?
