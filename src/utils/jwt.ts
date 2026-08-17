@@ -30,3 +30,25 @@ export function generateTokenPair(payload: TokenPayload) {
     refreshToken: generateRefreshToken(payload),
   }
 }
+
+interface PreAuthPayload {
+  sub: string
+  preAuth: true
+}
+
+// Token de curtíssima duração emitido depois que a senha já foi validada,
+// mas antes de saber qual organização usar (quando o login tem mais de
+// uma). Evita pedir a senha de novo só para escolher a empresa.
+export function generatePreAuthToken(userId: string): string {
+  return jwt.sign({ sub: userId, preAuth: true } as PreAuthPayload, env.JWT_SECRET, {
+    expiresIn: '5m',
+  })
+}
+
+export function verifyPreAuthToken(token: string): string {
+  const payload = jwt.verify(token, env.JWT_SECRET) as PreAuthPayload
+  if (!payload.preAuth) {
+    throw new Error('Token inválido')
+  }
+  return payload.sub
+}

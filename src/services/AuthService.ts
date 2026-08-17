@@ -2,9 +2,15 @@ import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { prisma } from '../config/prisma'
 import { env } from '../config/env'
-import { generateTokenPair, verifyRefreshToken } from '../utils/jwt'
+import {
+  generateTokenPair,
+  verifyRefreshToken,
+  generatePreAuthToken,
+  verifyPreAuthToken,
+} from '../utils/jwt'
 import {
   UnauthorizedError,
+  ForbiddenError,
   NotFoundError,
   ConflictError,
 } from '../utils/AppError'
@@ -56,12 +62,6 @@ export class AuthService {
       where: { email: input.email },
     })
 
-    if (existing) {
-      throw new ConflictError('E-mail já cadastrado')
-    }
-
-    const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_SALT_ROUNDS)
-
     // ── Fluxo 1: aceitar convite para uma organização existente ──
     if (input.inviteToken) {
       const invite = await prisma.invite.findUnique({
@@ -71,6 +71,37 @@ export class AuthService {
       if (!invite || invite.acceptedAt || invite.expiresAt < new Date()) {
         throw new UnauthorizedError('Convite inválido ou expirado')
       }
+
+      // E-mail já tem conta em outra empresa: em vez de criar um segundo
+      // usuário (o e-mail é único), a senha informada é validada contra
+      // a conta existente e o convite vira uma Membership nova — a mesma
+      // identidade passa a ter acesso a mais uma empresa.
+      if (existing) {
+        const passwordMatch = await bcrypt.compare(input.password, existing.password)
+        if (!passwordMatch) {
+          throw new UnauthorizedError(
+            'Este e-mail já tem uma conta no ATHLO. Informe a senha dessa conta para aceitar o convite.',
+          )
+        }
+
+        await prisma.$transaction([
+          prisma.membership.upsert({
+            where: {
+              userId_organizationId: { userId: existing.id, organizationId: invite.organizationId },
+            },
+            update: { orgRole: invite.role },
+            create: { userId: existing.id, organizationId: invite.organizationId, orgRole: invite.role },
+          }),
+          prisma.invite.update({
+            where: { id: invite.id },
+            data: { acceptedAt: new Date() },
+          }),
+        ])
+
+        return this.issueSession(existing, { organizationId: invite.organizationId, orgRole: invite.role })
+      }
+
+      const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_SALT_ROUNDS)
 
       const [user] = await prisma.$transaction([
         prisma.user.create({
@@ -90,15 +121,24 @@ export class AuthService {
         }),
       ])
 
+      await prisma.membership.create({
+        data: { userId: user.id, organizationId: invite.organizationId, orgRole: invite.role },
+      })
+
       await this.sendVerificationEmail(user.id, user.email, user.name)
       return this.issueSession(user)
     }
 
     // ── Fluxo 2: cadastro self-service, cria a empresa (tenant) ──
+    if (existing) {
+      throw new ConflictError('E-mail já cadastrado')
+    }
+
     if (!input.organizationName) {
       throw new ConflictError('Informe o nome da empresa para criar sua conta')
     }
 
+    const passwordHash = await bcrypt.hash(input.password, env.BCRYPT_SALT_ROUNDS)
     const organization = await this.createOrganizationWithTrial(input.organizationName)
 
     const user = await prisma.user.create({
@@ -111,6 +151,10 @@ export class AuthService {
         phone: input.phone,
       },
       include: { organization: true },
+    })
+
+    await prisma.membership.create({
+      data: { userId: user.id, organizationId: organization.id, orgRole: OrgRole.OWNER },
     })
 
     await this.sendVerificationEmail(user.id, user.email, user.name)
@@ -151,18 +195,27 @@ export class AuthService {
     return organization
   }
 
-  private async issueSession(user: {
-    id: string
-    organizationId: string
-    orgRole: OrgRole
-    password: string
-    refreshToken: string | null
-    [key: string]: unknown
-  }) {
+  private async issueSession(
+    user: {
+      id: string
+      organizationId: string
+      orgRole: OrgRole
+      password: string
+      refreshToken: string | null
+      [key: string]: unknown
+    },
+    // Permite emitir a sessão para uma empresa diferente da "padrão" do
+    // usuário (User.organizationId) — usado na seleção/troca de
+    // organização, quando o login tem acesso a mais de uma via Membership.
+    activeOrg?: { organizationId: string; orgRole: OrgRole },
+  ) {
+    const organizationId = activeOrg?.organizationId ?? user.organizationId
+    const orgRole = activeOrg?.orgRole ?? user.orgRole
+
     const tokens = generateTokenPair({
       sub: user.id,
-      organizationId: user.organizationId,
-      orgRole: user.orgRole,
+      organizationId,
+      orgRole,
     })
 
     await prisma.user.update({
@@ -185,7 +238,36 @@ export class AuthService {
       emailVerifyExpires?: unknown
     }
 
-    return { user: safeUser, ...tokens }
+    // A organização "ativa" da sessão pode ser diferente da organização
+    // padrão do usuário (User.organizationId) — busca os dados corretos
+    // para devolver ao front, senão a tela mostraria a empresa errada
+    // logo depois de trocar de unidade.
+    const activeOrganization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      include: { subscription: { include: { plan: true } } },
+    })
+
+    const memberships = await prisma.membership.findMany({
+      where: { userId: user.id },
+      include: { organization: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return {
+      user: {
+        ...safeUser,
+        organizationId,
+        orgRole,
+        organization: activeOrganization,
+        organizations: memberships.map((m) => ({
+          id: m.organizationId,
+          name: m.organization.name,
+          slug: m.organization.slug,
+          orgRole: m.orgRole,
+        })),
+      },
+      ...tokens,
+    }
   }
 
   async login(input: LoginInput) {
@@ -237,7 +319,111 @@ export class AuthService {
       })
     }
 
-    return this.issueSession(user)
+    const memberships = await prisma.membership.findMany({
+      where: { userId: user.id },
+      include: { organization: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    // Login tem acesso a mais de uma empresa (múltiplos CNPJs sob o mesmo
+    // e-mail) — não emite sessão ainda, devolve a lista para o front
+    // mostrar a tela de seleção, como no seletor de unidade de referência.
+    if (memberships.length > 1) {
+      return {
+        requiresOrgSelection: true as const,
+        preAuthToken: generatePreAuthToken(user.id),
+        organizations: memberships.map((m) => ({
+          id: m.organizationId,
+          name: m.organization.name,
+          slug: m.organization.slug,
+          orgRole: m.orgRole,
+        })),
+      }
+    }
+
+    const single = memberships[0]
+    return this.issueSession(
+      user,
+      single ? { organizationId: single.organizationId, orgRole: single.orgRole } : undefined,
+    )
+  }
+
+  // Segunda etapa do login quando há mais de uma organização — troca o
+  // preAuthToken (emitido logo após a senha ser validada) pela sessão de
+  // verdade, já apontando para a empresa escolhida.
+  async selectOrganization(preAuthToken: string, organizationId: string) {
+    let userId: string
+    try {
+      userId = verifyPreAuthToken(preAuthToken)
+    } catch {
+      throw new UnauthorizedError('Sessão de login expirada. Faça login novamente.')
+    }
+
+    const membership = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId } },
+    })
+
+    if (!membership) {
+      throw new ForbiddenError('Você não tem acesso a essa organização.')
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      throw new NotFoundError('Usuário')
+    }
+
+    return this.issueSession(user, { organizationId, orgRole: membership.orgRole })
+  }
+
+  // "Trocar Unidade" — já autenticado, sem precisar da senha de novo.
+  async switchOrganization(userId: string, organizationId: string) {
+    const membership = await prisma.membership.findUnique({
+      where: { userId_organizationId: { userId, organizationId } },
+    })
+
+    if (!membership) {
+      throw new ForbiddenError('Você não tem acesso a essa organização.')
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      throw new NotFoundError('Usuário')
+    }
+
+    return this.issueSession(user, { organizationId, orgRole: membership.orgRole })
+  }
+
+  async listMyOrganizations(userId: string) {
+    const memberships = await prisma.membership.findMany({
+      where: { userId },
+      include: { organization: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    return memberships.map((m) => ({
+      id: m.organizationId,
+      name: m.organization.name,
+      slug: m.organization.slug,
+      orgRole: m.orgRole,
+    }))
+  }
+
+  // Permite que quem já está logado crie mais uma empresa (outro CNPJ) e
+  // vira automaticamente dono (OWNER) dela, sem precisar de um novo
+  // cadastro/e-mail — a sessão já troca para a empresa recém-criada.
+  async createAdditionalOrganization(userId: string, organizationName: string) {
+    const user = await prisma.user.findUnique({ where: { id: userId } })
+    if (!user) {
+      throw new NotFoundError('Usuário')
+    }
+
+    const organization = await this.createOrganizationWithTrial(organizationName)
+
+    await prisma.membership.create({
+      data: { userId, organizationId: organization.id, orgRole: OrgRole.OWNER },
+    })
+
+    return this.issueSession(user, { organizationId: organization.id, orgRole: OrgRole.OWNER })
   }
 
   async refreshToken(token: string) {
@@ -436,28 +622,50 @@ export class AuthService {
     return { message: 'E-mail de verificação reenviado.' }
   }
 
-  async me(userId: string) {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        orgRole: true,
-        status: true,
-        avatar: true,
-        phone: true,
-        createdAt: true,
-        organization: {
-          include: { subscription: { include: { plan: true } } },
+  // organizationId/orgRole vêm da sessão ativa (JWT), não necessariamente
+  // da empresa "padrão" do usuário (User.organizationId) — depois de uma
+  // troca de unidade, é a organização atual que precisa aparecer aqui.
+  async me(userId: string, organizationId: string, orgRole: OrgRole) {
+    const [user, organization, memberships] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          status: true,
+          avatar: true,
+          phone: true,
+          isPlatformAdmin: true,
+          createdAt: true,
         },
-      },
-    })
+      }),
+      prisma.organization.findUnique({
+        where: { id: organizationId },
+        include: { subscription: { include: { plan: true } } },
+      }),
+      prisma.membership.findMany({
+        where: { userId },
+        include: { organization: true },
+        orderBy: { createdAt: 'asc' },
+      }),
+    ])
 
     if (!user) {
       throw new NotFoundError('Usuário')
     }
 
-    return user
+    return {
+      ...user,
+      organizationId,
+      orgRole,
+      organization,
+      organizations: memberships.map((m) => ({
+        id: m.organizationId,
+        name: m.organization.name,
+        slug: m.organization.slug,
+        orgRole: m.orgRole,
+      })),
+    }
   }
 }

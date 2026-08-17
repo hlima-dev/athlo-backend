@@ -8,7 +8,12 @@ const controller = new AuthController()
 
 router.post('/register', authLimiter, (req, res) => controller.register(req, res))
 router.post('/login', authLimiter, (req, res) => controller.login(req, res))
+router.post('/select-organization', authLimiter, (req, res) => controller.selectOrganization(req, res))
 router.post('/refresh', authLimiter, (req, res) => controller.refresh(req, res))
+
+router.post('/switch-organization', authenticate, (req, res) => controller.switchOrganization(req, res))
+router.get('/organizations', authenticate, (req, res) => controller.listOrganizations(req, res))
+router.post('/organizations', authenticate, (req, res) => controller.createOrganization(req, res))
 
 router.post('/forgot-password', passwordResetLimiter, (req, res) =>
   controller.forgotPassword(req, res)

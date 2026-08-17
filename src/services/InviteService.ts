@@ -14,9 +14,21 @@ const emailService = new EmailService()
 
 export class InviteService {
   async create(organizationId: string, invitedById: string, input: CreateInviteInput) {
-    const existingUser = await prisma.user.findUnique({ where: { email: input.email } })
-    if (existingUser) {
-      throw new ConflictError('Já existe um usuário com este e-mail')
+    // Um e-mail já ter conta em OUTRA empresa não bloqueia mais o convite
+    // — é assim que o mesmo login passa a ter acesso a várias empresas
+    // (múltiplos CNPJs). Só bloqueia se já for membro DESTA organização.
+    const existingMembership = await prisma.membership.findFirst({
+      where: { organizationId, user: { email: input.email } },
+    })
+    if (existingMembership) {
+      throw new ConflictError('Este e-mail já faz parte da sua empresa')
+    }
+
+    const pendingInvite = await prisma.invite.findFirst({
+      where: { organizationId, email: input.email, acceptedAt: null, expiresAt: { gt: new Date() } },
+    })
+    if (pendingInvite) {
+      throw new ConflictError('Já existe um convite pendente para este e-mail')
     }
 
     const organization = await prisma.organization.findUniqueOrThrow({

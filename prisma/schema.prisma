@@ -157,6 +157,7 @@ model Organization {
   status   OrganizationStatus @default(TRIAL)
 
   users        User[]
+  memberships  Membership[]
   contacts     Contact[]
   products     Product[]
   invoices     Invoice[]
@@ -274,12 +275,35 @@ model User {
   invoicesCreated  Invoice[]
   invitesSent      Invite[]       @relation("InviteSender")
   ordersOperated   Order[]        @relation("OrderOperator")
+  memberships      Membership[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@map("users")
+}
+
+// Um mesmo login (usuário/e-mail) pode ter acesso a mais de uma empresa —
+// ex.: o dono de várias unidades/CNPJs sob a mesma identidade, como no
+// seletor "Trocar Unidade" da referência que o cliente pediu. User.organizationId
+// continua sendo a empresa "padrão" (criada no cadastro); Membership é a
+// lista completa de empresas que esse login pode acessar, cada uma com seu
+// próprio papel (dono de uma pode ser só membro de outra).
+model Membership {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orgRole        OrgRole      @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
+  @@map("memberships")
 }
 
 // ─── CRM ─────────────────────────────────────

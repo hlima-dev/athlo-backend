@@ -102,6 +102,30 @@ async function main() {
   })
 
   console.log(`✅ Owner criado: ${owner.email}`)
+
+  // ====================================
+  // BACKFILL: Membership (acesso a múltiplas empresas)
+  // ====================================
+  // Todo usuário existente precisa de uma Membership correspondente à
+  // empresa que já tinha (User.organizationId/orgRole) — sem isso, o
+  // login não encontra nenhuma organização para essa conta. Roda em
+  // todo deploy (idempotente via upsert), então cobre tanto contas
+  // antigas quanto novas.
+  const usersWithoutBackfill = await prisma.user.findMany({
+    select: { id: true, organizationId: true, orgRole: true },
+  })
+
+  let backfilled = 0
+  for (const u of usersWithoutBackfill) {
+    const result = await prisma.membership.upsert({
+      where: { userId_organizationId: { userId: u.id, organizationId: u.organizationId } },
+      update: {},
+      create: { userId: u.id, organizationId: u.organizationId, orgRole: u.orgRole },
+    })
+    if (result) backfilled += 1
+  }
+
+  console.log(`✅ Membership garantida para ${backfilled} usuário(s)`)
   console.log('\n🎉 Seed concluído com sucesso!')
 }
 

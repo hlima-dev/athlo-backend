@@ -28,6 +28,19 @@ const loginSchema = z.object({
   password: z.string().min(1),
 })
 
+const selectOrganizationSchema = z.object({
+  preAuthToken: z.string().min(1),
+  organizationId: z.string().min(1),
+})
+
+const switchOrganizationSchema = z.object({
+  organizationId: z.string().min(1),
+})
+
+const createOrganizationSchema = z.object({
+  organizationName: z.string().min(2, 'Nome da empresa deve ter ao menos 2 caracteres'),
+})
+
 const forgotPasswordSchema = z.object({
   email: z.string().email('E-mail inválido'),
 })
@@ -62,9 +75,54 @@ export class AuthController {
 
   async login(req: Request, res: Response): Promise<void> {
     const data = loginSchema.parse(req.body)
-    const { user, accessToken, refreshToken } = await authService.login(data)
+    const result = await authService.login(data)
+
+    // Login tem acesso a mais de uma empresa — ainda não emite sessão,
+    // o front precisa mostrar a tela de seleção e chamar
+    // /auth/select-organization com o preAuthToken devolvido aqui.
+    if ('requiresOrgSelection' in result) {
+      res.status(200).json(successResponse(result))
+      return
+    }
+
+    const { user, accessToken, refreshToken } = result
     const csrfToken = setAuthCookies(res, { accessToken, refreshToken })
     res.status(200).json(successResponse({ user, csrfToken }, 'Login realizado com sucesso'))
+  }
+
+  async selectOrganization(req: Request, res: Response): Promise<void> {
+    const { preAuthToken, organizationId } = selectOrganizationSchema.parse(req.body)
+    const { user, accessToken, refreshToken } = await authService.selectOrganization(
+      preAuthToken,
+      organizationId,
+    )
+    const csrfToken = setAuthCookies(res, { accessToken, refreshToken })
+    res.status(200).json(successResponse({ user, csrfToken }, 'Login realizado com sucesso'))
+  }
+
+  async switchOrganization(req: Request, res: Response): Promise<void> {
+    const { organizationId } = switchOrganizationSchema.parse(req.body)
+    const { user, accessToken, refreshToken } = await authService.switchOrganization(
+      req.user!.id,
+      organizationId,
+    )
+    const csrfToken = setAuthCookies(res, { accessToken, refreshToken })
+    res.status(200).json(successResponse({ user, csrfToken }, 'Unidade alterada com sucesso'))
+  }
+
+  async listOrganizations(req: Request, res: Response): Promise<void> {
+    const organizations = await authService.listMyOrganizations(req.user!.id)
+    res.status(200).json(successResponse(organizations))
+  }
+
+  async createOrganization(req: Request, res: Response): Promise<void> {
+    const { organizationName } = createOrganizationSchema.parse(req.body)
+    const { user, accessToken, refreshToken } = await authService.createAdditionalOrganization(
+      req.user!.id,
+      organizationName,
+    )
+    const csrfToken = setAuthCookies(res, { accessToken, refreshToken })
+    res.status(201).json(successResponse({ user, csrfToken }, 'Empresa criada com sucesso'))
   }
 
   async refresh(req: Request, res: Response): Promise<void> {
@@ -108,7 +166,7 @@ export class AuthController {
   }
 
   async me(req: Request, res: Response): Promise<void> {
-    const user = await authService.me(req.user!.id)
+    const user = await authService.me(req.user!.id, req.user!.organizationId, req.user!.orgRole)
     res.status(200).json(successResponse(user))
   }
 
