@@ -1,10 +1,21 @@
 import { Request, Response } from 'express'
 import { prisma } from '../config/prisma'
+import { ExportService } from '../services/ExportService'
+
+const exportService = new ExportService()
+
+const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+
+// Mesmas metas fixas usadas na tela de Relatórios do front — mantidas
+// aqui também para a exportação em xlsx bater com o que aparece na tela.
+const GOAL_TARGETS = {
+  contacts: 50,
+  events: 10,
+  revenue: 5000,
+}
 
 export class DashboardController {
-  async index(req: Request, res: Response): Promise<void> {
-    const organizationId = req.user!.organizationId
-    const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez']
+  private async getDashboardData(organizationId: string) {
 
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -77,19 +88,63 @@ export class DashboardController {
       contatos: growthMap[month],
     }))
 
+    const revenue = Number(revenueThisMonth._sum.amount ?? 0)
+
+    return {
+      contacts: contactsCount,
+      users: usersCount,
+      events: eventsCount,
+      pendingInvoices: pendingInvoicesCount,
+      openOrders: openOrdersCount,
+      revenue,
+      revenueData,
+      growthData,
+      upcomingEvents,
+    }
+  }
+
+  async index(req: Request, res: Response): Promise<void> {
+    const data = await this.getDashboardData(req.user!.organizationId)
+
     res.status(200).json({
       status: 'success',
-      data: {
-        contacts: contactsCount,
-        users: usersCount,
-        events: eventsCount,
-        pendingInvoices: pendingInvoicesCount,
-        openOrders: openOrdersCount,
-        revenue: Number(revenueThisMonth._sum.amount ?? 0).toFixed(2),
-        revenueData,
-        growthData,
-        upcomingEvents,
+      data: { ...data, revenue: data.revenue.toFixed(2) },
+    })
+  }
+
+  async export(req: Request, res: Response): Promise<void> {
+    const organizationId = req.user!.organizationId
+
+    const [data, organization] = await Promise.all([
+      this.getDashboardData(organizationId),
+      prisma.organization.findUnique({ where: { id: organizationId } }),
+    ])
+
+    const goals = [
+      {
+        title: `Contatos vs meta (${GOAL_TARGETS.contacts})`,
+        value: Math.min(Math.round((data.contacts / GOAL_TARGETS.contacts) * 100), 100),
       },
+      {
+        title: `Compromissos vs meta (${GOAL_TARGETS.events})`,
+        value: Math.min(Math.round((data.events / GOAL_TARGETS.events) * 100), 100),
+      },
+      {
+        title: `Receita vs meta (R$ ${GOAL_TARGETS.revenue.toLocaleString('pt-BR')})`,
+        value: Math.min(Math.round((data.revenue / GOAL_TARGETS.revenue) * 100), 100),
+      },
+    ]
+
+    await exportService.streamDashboardReport(res, {
+      organizationName: organization?.name || 'ATHLO',
+      contacts: data.contacts,
+      revenue: data.revenue,
+      events: data.events,
+      pendingInvoices: data.pendingInvoices,
+      openOrders: data.openOrders,
+      growthData: data.growthData,
+      revenueData: data.revenueData,
+      goals,
     })
   }
 }

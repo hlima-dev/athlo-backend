@@ -6,5 +6,6 @@ const dashboardRoutes = Router()
 const dashboardController = new DashboardController()
 
 dashboardRoutes.get('/', authenticate, (req, res) => dashboardController.index(req, res))
+dashboardRoutes.get('/export', authenticate, (req, res) => dashboardController.export(req, res))
 
 export { dashboardRoutes }
