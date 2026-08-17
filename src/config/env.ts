@@ -22,6 +22,12 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
   STRIPE_PRICE_ID_STARTER: z.string().optional(),
   STRIPE_PRICE_ID_PRO: z.string().optional(),
+
+  // Web Push — opcionais. Sem eles, notificações push simplesmente não são
+  // enviadas (a notificação dentro do sistema continua funcionando normal).
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:contato@athlo.app'),
 })
 
 const _env = envSchema.safeParse(process.env)

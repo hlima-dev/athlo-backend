@@ -12,6 +12,7 @@ import { eventRouter } from './events.routes'
 import { notificationRouter } from './notifications.routes'
 import { dashboardRoutes } from './dashboard.routes'
 import { adminRouter } from './admin.routes'
+import { pushRouter } from './push.routes'
 
 const router = Router()
 
@@ -27,5 +28,6 @@ router.use('/events', eventRouter)
 router.use('/notifications', notificationRouter)
 router.use('/dashboard', dashboardRoutes)
 router.use('/admin', adminRouter)
+router.use('/push', pushRouter)
 
 export { router }

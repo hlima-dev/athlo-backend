@@ -276,6 +276,7 @@ model User {
   invitesSent      Invite[]       @relation("InviteSender")
   ordersOperated   Order[]        @relation("OrderOperator")
   memberships      Membership[]
+  pushSubscriptions PushSubscription[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -478,11 +479,35 @@ model Event {
   assignedToId String?
   assignedTo   User?   @relation("EventAssignee", fields: [assignedToId], references: [id])
 
+  // Marca quando o lembrete (notificação + push) já foi disparado, para a
+  // rotina agendada (scripts/sendEventReminders.ts) não notificar duas
+  // vezes o mesmo compromisso.
+  reminderSentAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@map("events")
+}
+
+// Assinatura de notificação push do navegador (Web Push) de um usuário
+// num dispositivo específico — cada navegador/aparelho gera a sua. Sem
+// isso não tem como mandar notificação pro notebook/celular fora do site.
+model PushSubscription {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint  String @unique @db.Text
+  p256dh    String
+  auth      String
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_subscriptions")
 }
 
 // ─── Notificações ────────────────────────────
