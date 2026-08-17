@@ -26,5 +26,8 @@ jobs:
       - name: Gerar Prisma Client
         run: npm run db:generate
 
+      - name: Testes
+        run: npm run test
+
       - name: Build (typecheck)
         run: npm run build

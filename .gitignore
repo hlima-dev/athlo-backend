@@ -34,3 +34,4 @@ prisma/migrations/
 # Uploads (se local)
 uploads/
 tmp/
+coverage

@@ -15,7 +15,10 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset",
     "admin:promote": "tsx scripts/promoteAdmin.ts",
-    "reminders:invoices": "tsx scripts/sendInvoiceReminders.ts"
+    "reminders:invoices": "tsx scripts/sendInvoiceReminders.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -47,5 +50,9 @@
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@vitest/coverage-v8": "^4.1.10",
+    "vitest": "^4.1.10"
   }
 }
