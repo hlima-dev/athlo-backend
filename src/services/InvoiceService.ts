@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma'
 import { NotFoundError } from '../utils/AppError'
-import { getPagination, paginate, PaginationParams } from '../utils/pagination'
+import { paginate, PaginationParams } from '../utils/pagination'
 import { InvoiceMethod, InvoiceStatus, InvoiceType } from '@prisma/client'
 
 interface CreateInvoiceInput {

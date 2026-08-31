@@ -14,6 +14,7 @@ interface JwtPayload {
 }
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- forma padrão do TS para estender o Request do Express
   namespace Express {
     interface Request {
       user?: {

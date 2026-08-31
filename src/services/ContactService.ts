@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma'
 import { ConflictError, NotFoundError } from '../utils/AppError'
-import { getPagination, paginate, PaginationParams } from '../utils/pagination'
+import { paginate, PaginationParams } from '../utils/pagination'
 import { ContactStatus, ContactType } from '@prisma/client'
 
 interface CreateContactInput {

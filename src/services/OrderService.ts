@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma'
 import { NotFoundError, ValidationError } from '../utils/AppError'
-import { getPagination, paginate, PaginationParams } from '../utils/pagination'
+import { paginate, PaginationParams } from '../utils/pagination'
 import { EmailService } from './EmailService'
 import {
   OrderOrigin,
