@@ -3,6 +3,9 @@ import { ZodError } from 'zod'
 import { Prisma } from '@prisma/client'
 import { AppError } from '../utils/AppError'
 import { env } from '../config/env'
+import { ErrorLogService } from '../services/ErrorLogService'
+
+const errorLogService = new ErrorLogService()
 
 export function errorHandler(
   err: unknown,
@@ -76,6 +79,10 @@ export function errorHandler(
 
   // ── Erro genérico (não expor detalhes em produção) ────────
   console.error('🔥 Unhandled error:', err)
+
+  // Fire-and-forget — não atrasa nem quebra a resposta de erro por causa
+  // do registro (visível depois em /admin, só pra quem é isPlatformAdmin).
+  void errorLogService.record(err, req)
 
   res.status(500).json({
     status: 'error',

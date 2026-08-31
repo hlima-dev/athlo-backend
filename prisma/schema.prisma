@@ -529,3 +529,28 @@ model Notification {
   @@index([userId])
   @@map("notifications")
 }
+
+// ─── Monitoramento ───────────────────────────
+
+// Registro de erros 5xx não tratados, capturados no errorHandler — só
+// visível no painel de administração da plataforma (requirePlatformAdmin).
+// Não guarda erros operacionais esperados (AppError, validação Zod etc.),
+// só o que realmente indica um bug.
+model ErrorLog {
+  id         String    @id @default(cuid())
+  message    String
+  stack      String?   @db.Text
+  statusCode Int
+  method     String
+  path       String
+
+  userId         String?
+  organizationId String?
+
+  resolvedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([resolvedAt])
+  @@map("error_logs")
+}
