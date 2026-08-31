@@ -15,6 +15,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset",
     "admin:promote": "tsx scripts/promoteAdmin.ts",
+    "admin:list": "tsx scripts/listPlatformAdmins.ts",
     "reminders:invoices": "tsx scripts/sendInvoiceReminders.ts",
     "reminders:events": "tsx scripts/sendEventReminders.ts",
     "test": "vitest run",
