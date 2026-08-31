@@ -51,7 +51,8 @@ houver mais de uma), `/auth/select-organization`, `/auth/switch-organization`,
 `/plans/subscription/cancel`, `/stripe/webhook`
 
 **Admin da plataforma** — `/admin/overview`, `/admin/organizations`,
-`/admin/organizations/:id/status`
+`/admin/organizations/:id/status`, `/admin/errors`, `/admin/errors/summary`,
+`/admin/errors/:id/resolve`
 
 **Push** — `/push/public-key`, `/push/subscribe`, `/push/unsubscribe`
 
@@ -79,6 +80,7 @@ npm run build               # compila TS
 npm run test                 # Vitest
 npm run db:seed              # popula banco
 npm run admin:promote        # promove um usuário a isPlatformAdmin
+npm run admin:list           # lista quem já é isPlatformAdmin
 npm run reminders:invoices   # Render Cron Job diário
 npm run reminders:events     # Render Cron Job a cada 15min
 ```
@@ -90,6 +92,5 @@ ExcelJS, PDFKit, Vitest.
 
 ## Falta
 
-- Monitoramento de erros em produção
 - Upload de logo/avatar
 - Pipeline de vendas / Kanban
