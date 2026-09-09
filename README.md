@@ -70,7 +70,10 @@ configurações), `MEMBER` (operacional).
 
 ## Credenciais do seed
 
-`admin@athlodemo.com.br` / `Admin@2024` — troque em produção.
+O `npm run db:seed` cria um usuário admin de demonstração — a senha não
+é publicada aqui porque o ambiente de demo ao vivo usa Stripe em modo
+**live** (cobrança real). Pra testar o login, rode o seed localmente
+(ver `prisma/seed.ts`) e troque a senha antes de usar em produção.
 
 ## Scripts
 
