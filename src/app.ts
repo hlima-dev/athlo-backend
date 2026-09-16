@@ -5,6 +5,7 @@ import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
 
 import { env } from './config/env'
+import { prisma } from './config/prisma'
 import { router } from './routes'
 import { errorHandler } from './middlewares/errorHandler'
 import { requestLogger } from './middlewares/requestLogger'
@@ -67,6 +68,20 @@ app.get('/', (_req, res) => {
 
 app.get('/health', (_req, res) => {
   return res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
+})
+
+// Health check "profundo": faz uma query real no banco. Usado pelo workflow
+// de keep-alive (.github/workflows/keep-alive.yml) pra gerar atividade de
+// verdade no Supabase e evitar que o projeto free-tier hiberne por
+// inatividade — um GET em `/health` sozinho não toca o banco, só mantém o
+// serviço web (Render) acordado.
+app.get('/health/db', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    return res.status(200).json({ status: 'ok', db: 'up', timestamp: new Date().toISOString() })
+  } catch (error) {
+    return res.status(503).json({ status: 'error', db: 'down', message: (error as Error).message })
+  }
 })
 
 // Limite geral de requisições por IP — as rotas de autenticação já têm

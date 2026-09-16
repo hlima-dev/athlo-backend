@@ -1,0 +1,33 @@
+name: Keep-alive (Supabase + Render)
+
+# Faz ping diário em /health/db, que executa uma query real no Postgres.
+# Sem isso, o projeto Supabase free-tier hiberna após ~7 dias sem atividade
+# no banco (o serviço web dormir/acordar no Render não conta como atividade
+# de banco). O timeout generoso e o retry cobrem o cold start do Render
+# free-tier (~30-50s pra acordar o serviço antes de responder).
+on:
+  schedule:
+    - cron: '0 8 * * *' # todo dia às 08:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health/db
+        run: |
+          url="https://athlo-backend-r176.onrender.com/health/db"
+          for attempt in 1 2 3; do
+            echo "Tentativa $attempt..."
+            response=$(curl -sS -m 60 -w "\n%{http_code}" "$url" || echo "000")
+            status="${response##*$'\n'}"
+            body="${response%$'\n'*}"
+            echo "HTTP $status: $body"
+            if [ "$status" = "200" ]; then
+              echo "OK — banco acordado."
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Falhou nas 3 tentativas."
+          exit 1
