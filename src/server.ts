@@ -11,15 +11,42 @@ const BANNER = `
 ╚══════════════════════════════════════════╝
 `
 
+// Tenta conectar ao banco algumas vezes antes de desistir. Isso existe
+// porque o Supabase free-tier (pooler) pode demorar alguns segundos pra
+// responder logo depois que o serviço do Render acorda de um spin-down —
+// sem retry, a 1ª tentativa falhava, o processo encerrava com
+// process.exit(1), o Render reiniciava um container novo do zero, e o
+// ciclo se repetia (crash loop) até a sorte alinhar os dois acordando ao
+// mesmo tempo. Isso podia levar bem mais que qualquer timeout razoável de
+// cliente, e foi a causa real de "erro ao cadastrar/entrar" visto em
+// produção mesmo com usuário e senha corretos.
+async function connectWithRetry(maxAttempts = 5, delayMs = 3000): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      await prisma.$connect()
+      console.log('✅  Banco de dados conectado')
+      return true
+    } catch (error) {
+      console.error(`❌  Falha ao conectar ao banco (tentativa ${attempt}/${maxAttempts}):`, error)
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+      }
+    }
+  }
+  return false
+}
+
 async function bootstrap() {
   console.log(BANNER)
 
-  try {
-    await prisma.$connect()
-    console.log('✅  Banco de dados conectado')
-  } catch (error) {
-    console.error('❌  Falha ao conectar ao banco de dados:', error)
-    process.exit(1)
+  // Mesmo se as tentativas acima esgotarem, o servidor sobe assim mesmo:
+  // o Prisma reconecta sozinho na próxima query real, e isso evita que o
+  // processo fique preso num loop de crash só por causa de uma demora
+  // pontual do banco. As rotas que precisarem do banco vão devolver erro
+  // normalmente até a conexão se restabelecer — não crasham o processo.
+  const connected = await connectWithRetry()
+  if (!connected) {
+    console.error('⚠️   Subindo mesmo sem conexão confirmada com o banco — tentará de novo nas próximas queries.')
   }
 
   const server = app.listen(env.PORT, '0.0.0.0', () => {
