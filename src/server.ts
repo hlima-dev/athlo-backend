@@ -39,21 +39,29 @@ async function connectWithRetry(maxAttempts = 5, delayMs = 3000): Promise<boolea
 async function bootstrap() {
   console.log(BANNER)
 
-  // Mesmo se as tentativas acima esgotarem, o servidor sobe assim mesmo:
-  // o Prisma reconecta sozinho na próxima query real, e isso evita que o
-  // processo fique preso num loop de crash só por causa de uma demora
-  // pontual do banco. As rotas que precisarem do banco vão devolver erro
-  // normalmente até a conexão se restabelecer — não crasham o processo.
-  const connected = await connectWithRetry()
-  if (!connected) {
-    console.error('⚠️   Subindo mesmo sem conexão confirmada com o banco — tentará de novo nas próximas queries.')
-  }
-
+  // A porta abre JÁ, antes de esperar o banco — é o que o health check de
+  // deploy do Render observa pra considerar o deploy "Live". Se a gente
+  // esperar o banco responder antes de abrir a porta (como era antes) e o
+  // banco demorar mais que a janela de health check do Render, o deploy
+  // inteiro é marcado como falho e o Render volta pra versão anterior —
+  // foi exatamente o que aconteceu com os últimos deploys em produção.
   const server = app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`🚀  Servidor rodando na porta ${env.PORT}`)
     console.log(`📚  API disponível em http://localhost:${env.PORT}/api/v1`)
     console.log(`🌡️   Health check em http://localhost:${env.PORT}/health`)
     console.log(`🔧  Ambiente: ${env.NODE_ENV}\n`)
+  })
+
+  // Conexão com o banco acontece em paralelo, sem bloquear a porta. Mesmo
+  // se esgotar as tentativas, o processo continua de pé — o Prisma
+  // reconecta sozinho na próxima query real, então não tem motivo pra
+  // crashar o processo por causa de uma demora pontual do banco. As
+  // rotas que dependerem do banco vão devolver erro normalmente até a
+  // conexão se restabelecer.
+  connectWithRetry().then((connected) => {
+    if (!connected) {
+      console.error('⚠️   Não confirmou conexão com o banco nas tentativas iniciais — tentará de novo nas próximas queries.')
+    }
   })
 
   const shutdown = async (signal: string) => {
