@@ -15,6 +15,15 @@ import { StripeWebhookController } from './controllers/StripeWebhookController'
 
 export const app = express()
 
+// O Render (e qualquer PaaS atrás de load balancer) encaminha requisições
+// por um proxy reverso, adicionando o header X-Forwarded-For. Sem avisar
+// o Express pra confiar nesse 1 hop, o express-rate-limit recusa (por
+// segurança) usar esse header pra identificar o IP do cliente e lança
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR em toda requisição que passa por
+// algum rate limiter — isso incluía login/cadastro, quebrando os dois em
+// produção mesmo com o banco respondendo normalmente.
+app.set('trust proxy', 1)
+
 app.use(helmet())
 
 const allowedOrigins = env.CORS_ORIGINS.split(',').map((o) => o.trim())
