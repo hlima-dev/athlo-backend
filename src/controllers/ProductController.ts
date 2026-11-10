@@ -21,7 +21,7 @@ const updateProductSchema = createProductSchema.partial()
 export class ProductController {
   async create(req: Request, res: Response): Promise<void> {
     const data = createProductSchema.parse(req.body)
-    const product = await productService.create(req.user!.organizationId, data)
+    const product = await productService.create(req.user!.organizationId, data, req.user!.id)
     res.status(201).json(successResponse(product, 'Produto cadastrado com sucesso'))
   }
 
@@ -45,12 +45,12 @@ export class ProductController {
 
   async update(req: Request, res: Response): Promise<void> {
     const data = updateProductSchema.parse(req.body)
-    const product = await productService.update(req.user!.organizationId, String(req.params.id), data)
+    const product = await productService.update(req.user!.organizationId, String(req.params.id), data, req.user!.id)
     res.status(200).json(successResponse(product, 'Produto atualizado com sucesso'))
   }
 
   async delete(req: Request, res: Response): Promise<void> {
-    await productService.delete(req.user!.organizationId, String(req.params.id))
+    await productService.delete(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
   }
 }

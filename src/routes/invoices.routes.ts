@@ -2,11 +2,14 @@ import { Router } from 'express'
 import { InvoiceController } from '../controllers/InvoiceController'
 import { authenticate } from '../middlewares/auth'
 import { requireActiveSubscription } from '../middlewares/requireActiveSubscription'
+import { requireModulePermission } from '../middlewares/requireModulePermission'
+import { OrgModule } from '@prisma/client'
 
 const router = Router()
 const controller = new InvoiceController()
 
 router.use(authenticate)
+router.use(requireModulePermission(OrgModule.INVOICES))
 
 router.get('/', (req, res) => controller.list(req, res))
 router.get('/:id', (req, res) => controller.getById(req, res))

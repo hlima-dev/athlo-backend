@@ -14,11 +14,47 @@ const GOAL_TARGETS = {
   revenue: 5000,
 }
 
+// Projeção de 90 dias — soma de faturas PENDING (inclusive já vencidas,
+// que contam como impacto imediato) por dia, com saldo acumulado
+// começando em zero. É fluxo líquido projetado a partir das faturas
+// cadastradas, não saldo bancário real (o schema não modela conta
+// bancária) — por isso o nome "projetado", não "saldo".
+const CASH_FLOW_PROJECTION_DAYS = 90
+
+export function buildCashFlowProjection(
+  invoices: { type: 'RECEIVABLE' | 'PAYABLE'; amount: number; dueDate: Date }[],
+  now: Date = new Date(),
+): { date: string; in: number; out: number; balance: number }[] {
+  const dayBuckets = new Map<string, { in: number; out: number }>()
+
+  for (const invoice of invoices) {
+    const due = invoice.dueDate < now ? now : invoice.dueDate
+    const key = due.toISOString().slice(0, 10)
+    const bucket = dayBuckets.get(key) ?? { in: 0, out: 0 }
+    if (invoice.type === 'RECEIVABLE') {
+      bucket.in += Number(invoice.amount)
+    } else {
+      bucket.out += Number(invoice.amount)
+    }
+    dayBuckets.set(key, bucket)
+  }
+
+  const sortedDates = [...dayBuckets.keys()].sort()
+  let balance = 0
+
+  return sortedDates.map((date) => {
+    const bucket = dayBuckets.get(date)!
+    balance += bucket.in - bucket.out
+    return { date, in: bucket.in, out: bucket.out, balance }
+  })
+}
+
 export class DashboardController {
   private async getDashboardData(organizationId: string) {
 
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    const in90Days = new Date(now.getTime() + CASH_FLOW_PROJECTION_DAYS * 24 * 60 * 60 * 1000)
 
     const [
       contactsCount,
@@ -30,6 +66,7 @@ export class DashboardController {
       allReceivables,
       allContacts,
       upcomingEvents,
+      projectedInvoices,
     ] = await Promise.all([
       prisma.contact.count({ where: { organizationId } }),
       prisma.user.count({ where: { organizationId } }),
@@ -63,7 +100,24 @@ export class DashboardController {
         take: 5,
         select: { id: true, title: true, type: true, startDate: true },
       }),
+      prisma.invoice.findMany({
+        where: {
+          organizationId,
+          status: { in: ['PENDING', 'OVERDUE'] },
+          dueDate: { lte: in90Days },
+        },
+        select: { type: true, amount: true, dueDate: true },
+      }),
     ])
+
+    const cashFlowProjection = buildCashFlowProjection(
+      projectedInvoices.map((invoice) => ({
+        type: invoice.type,
+        amount: Number(invoice.amount),
+        dueDate: invoice.dueDate,
+      })),
+      now,
+    )
 
     const revenueMap: Record<string, number> = {}
     for (const invoice of allReceivables) {
@@ -100,6 +154,7 @@ export class DashboardController {
       revenueData,
       growthData,
       upcomingEvents,
+      cashFlowProjection,
     }
   }
 
@@ -144,6 +199,7 @@ export class DashboardController {
       openOrders: data.openOrders,
       growthData: data.growthData,
       revenueData: data.revenueData,
+      cashFlowProjection: data.cashFlowProjection,
       goals,
     })
   }

@@ -6,8 +6,10 @@ import { EventStatus, EventType } from '@prisma/client'
 import { NotFoundError } from '../utils/AppError'
 import { optionalUrl } from '../utils/validation'
 import { EventTextParserService } from '../services/EventTextParserService'
+import { AuditLogService } from '../services/AuditLogService'
 
 const eventTextParserService = new EventTextParserService()
+const auditLogService = new AuditLogService()
 
 const quickParseSchema = z.object({
   prompt: z.string().min(3, 'Descreva o compromisso em ao menos algumas palavras'),
@@ -38,6 +40,16 @@ export class EventController {
         createdById: req.user!.id,
       },
     })
+
+    void auditLogService.record({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.id,
+      entityType: 'Event',
+      entityId: event.id,
+      action: 'CREATE',
+      summary: `Compromisso "${event.title}" criado`,
+    })
+
     res.status(201).json(successResponse(event, 'Evento criado com sucesso'))
   }
 
@@ -95,6 +107,16 @@ export class EventController {
       where: { id: existing.id },
       data,
     })
+
+    void auditLogService.record({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.id,
+      entityType: 'Event',
+      entityId: event.id,
+      action: 'UPDATE',
+      summary: `Compromisso "${event.title}" atualizado`,
+    })
+
     res.status(200).json(successResponse(event, 'Evento atualizado'))
   }
 
@@ -105,6 +127,16 @@ export class EventController {
     if (!existing) throw new NotFoundError('Evento')
 
     await prisma.event.delete({ where: { id: existing.id } })
+
+    void auditLogService.record({
+      organizationId: req.user!.organizationId,
+      userId: req.user!.id,
+      entityType: 'Event',
+      entityId: existing.id,
+      action: 'DELETE',
+      summary: `Compromisso "${existing.title}" excluído`,
+    })
+
     res.status(204).send()
   }
 

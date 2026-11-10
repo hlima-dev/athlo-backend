@@ -109,18 +109,18 @@ export class OrderController {
 
   async update(req: Request, res: Response): Promise<void> {
     const data = updateOrderSchema.parse(req.body)
-    const order = await orderService.update(req.user!.organizationId, String(req.params.id), data)
+    const order = await orderService.update(req.user!.organizationId, String(req.params.id), data, req.user!.id)
     res.status(200).json(successResponse(order, 'Pedido atualizado com sucesso'))
   }
 
   async updateStatus(req: Request, res: Response): Promise<void> {
     const { status } = updateStatusSchema.parse(req.body)
-    const order = await orderService.updateStatus(req.user!.organizationId, String(req.params.id), status)
+    const order = await orderService.updateStatus(req.user!.organizationId, String(req.params.id), status, req.user!.id)
     res.status(200).json(successResponse(order, 'Status do pedido atualizado'))
   }
 
   async delete(req: Request, res: Response): Promise<void> {
-    await orderService.delete(req.user!.organizationId, String(req.params.id))
+    await orderService.delete(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
   }
 

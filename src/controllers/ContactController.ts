@@ -29,7 +29,7 @@ const updateContactSchema = createContactSchema.partial()
 export class ContactController {
   async create(req: Request, res: Response): Promise<void> {
     const data = createContactSchema.parse(req.body)
-    const contact = await contactService.create(req.user!.organizationId, data)
+    const contact = await contactService.create(req.user!.organizationId, data, req.user!.id)
     res.status(201).json(successResponse(contact, 'Contato cadastrado com sucesso'))
   }
 
@@ -53,12 +53,12 @@ export class ContactController {
 
   async update(req: Request, res: Response): Promise<void> {
     const data = updateContactSchema.parse(req.body)
-    const contact = await contactService.update(req.user!.organizationId, String(req.params.id), data)
+    const contact = await contactService.update(req.user!.organizationId, String(req.params.id), data, req.user!.id)
     res.status(200).json(successResponse(contact, 'Contato atualizado com sucesso'))
   }
 
   async delete(req: Request, res: Response): Promise<void> {
-    await contactService.delete(req.user!.organizationId, String(req.params.id))
+    await contactService.delete(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
   }
 }

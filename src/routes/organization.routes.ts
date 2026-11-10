@@ -17,6 +17,18 @@ router.patch(
   (req, res) => controller.update(req, res),
 )
 
+router.get(
+  '/members/:id/permissions',
+  authorize(OrgRole.OWNER, OrgRole.ADMIN),
+  (req, res) => controller.getMemberPermissions(req, res),
+)
+
+router.patch(
+  '/members/:id/permissions',
+  authorize(OrgRole.OWNER, OrgRole.ADMIN),
+  (req, res) => controller.updateMemberPermissions(req, res),
+)
+
 router.delete(
   '/me',
   authorize(OrgRole.OWNER),

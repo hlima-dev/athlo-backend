@@ -140,6 +140,30 @@ enum OrderOrigin {
   SITE
 }
 
+enum TaxRegime {
+  MEI
+  SIMPLES_NACIONAL
+  LUCRO_PRESUMIDO
+  LUCRO_REAL
+}
+
+// Módulos com controle de acesso granular por MEMBER (OWNER/ADMIN sempre
+// têm acesso total a todos, essa tabela nunca é consultada pra eles —
+// ver requireModulePermission.ts).
+enum OrgModule {
+  CONTACTS
+  INVOICES
+  PRODUCTS
+  ORDERS
+  EVENTS
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
 // ─── Tenant / Billing ────────────────────────
 
 model Organization {
@@ -156,15 +180,21 @@ model Organization {
   logoUrl  String?
   status   OrganizationStatus @default(TRIAL)
 
-  users        User[]
-  memberships  Membership[]
-  contacts     Contact[]
-  products     Product[]
-  invoices     Invoice[]
-  events       Event[]
-  invites      Invite[]
-  orders       Order[]
-  subscription Subscription?
+  // Usado pelo lembrete de obrigação fiscal (scripts/sendTaxObligationReminders.ts)
+  // — sem isso setado, a organização simplesmente não entra na rotina.
+  taxRegime TaxRegime?
+
+  users              User[]
+  memberships        Membership[]
+  contacts           Contact[]
+  products           Product[]
+  invoices           Invoice[]
+  events             Event[]
+  invites            Invite[]
+  orders             Order[]
+  subscription       Subscription?
+  modulePermissions  ModulePermission[]
+  taxReminderLogs    TaxReminderLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -277,6 +307,7 @@ model User {
   ordersOperated   Order[]        @relation("OrderOperator")
   memberships      Membership[]
   pushSubscriptions PushSubscription[]
+  modulePermissions ModulePermission[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -379,6 +410,11 @@ model Invoice {
   paidAt      DateTime?
   notes       String?       @db.Text
 
+  // Marca quando o lembrete de vencida (e-mail) já foi disparado, pro
+  // scripts/markAndRemindOverdueInvoices.ts não notificar duas vezes a
+  // mesma fatura — mesmo padrão do Event.reminderSentAt.
+  reminderSentAt DateTime?
+
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id])
 
@@ -389,6 +425,7 @@ model Invoice {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
+  @@index([organizationId, status, dueDate])
   @@map("invoices")
 }
 
@@ -553,4 +590,85 @@ model ErrorLog {
   @@index([createdAt])
   @@index([resolvedAt])
   @@map("error_logs")
+}
+
+// Registro de ações de negócio (criar/editar/excluir contato, fatura,
+// pedido, produto, compromisso) — diferente do ErrorLog, que é só bug;
+// esse é "quem fez o quê", visível pro próprio tenant (OWNER/ADMIN),
+// não só pra plataforma. Sem FK em userId/organizationId de propósito
+// (mesmo motivo do ErrorLog): log barato de escrever, não quebra se o
+// usuário ou a organização forem removidos depois. Nome/e-mail de quem
+// fez não é duplicado aqui — é resolvido em lote na leitura.
+model AuditLog {
+  id             String      @id @default(cuid())
+  organizationId String?
+  userId         String?
+
+  entityType String
+  entityId   String
+  action     AuditAction
+  summary    String
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}
+
+// Controle de acesso por módulo — só consultado pra orgRole MEMBER
+// (OWNER/ADMIN sempre passam direto, ver requireModulePermission.ts).
+// Backfill inicial (scripts/backfillModulePermissions.ts) cria um
+// registro habilitado em cada módulo pra todo membro já existente, pra
+// ninguém perder acesso no rollout — membros convidados depois nascem
+// sem nenhum módulo liberado, até o OWNER/ADMIN conceder.
+model ModulePermission {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module         OrgModule
+  enabled        Boolean      @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, module])
+  @@index([organizationId])
+  @@map("module_permissions")
+}
+
+// Prazo recorrente de uma obrigação fiscal (ex: DAS do dia 20) — mantido
+// pelo time ATHLO, não editável pelo cliente. Independente de
+// organização: uma linha por regime+tributo, reaproveitada por todas as
+// empresas naquele regime.
+model TaxDeadline {
+  id         String    @id @default(cuid())
+  regime     TaxRegime
+  label      String
+  dayOfMonth Int
+
+  reminderLogs TaxReminderLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("tax_deadlines")
+}
+
+// Guarda de "já lembrei essa organização desse prazo nesse mês" —
+// diferente do lembrete de fatura/evento (pontual), obrigação fiscal se
+// repete todo mês, então a chave de dedupe precisa do mês de referência.
+model TaxReminderLog {
+  id              String      @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  taxDeadlineId   String
+  taxDeadline     TaxDeadline @relation(fields: [taxDeadlineId], references: [id], onDelete: Cascade)
+  remindedForMonth String     // formato "AAAA-MM"
+
+  createdAt DateTime @default(now())
+
+  @@unique([organizationId, taxDeadlineId, remindedForMonth])
+  @@map("tax_reminder_logs")
 }

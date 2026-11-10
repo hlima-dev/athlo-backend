@@ -13,6 +13,7 @@ interface DashboardExportData {
   openOrders: number
   growthData: { month: string; contatos: number }[]
   revenueData: { month: string; valor: number }[]
+  cashFlowProjection: { date: string; in: number; out: number; balance: number }[]
   goals: { title: string; value: number }[]
 }
 
@@ -31,6 +32,13 @@ export class ExportService {
       'month',
       'valor',
     ])
+    this.buildSeriesSheet(
+      workbook,
+      'Projeção de caixa',
+      ['Data', 'Entradas (R$)', 'Saídas (R$)', 'Saldo acumulado (R$)'],
+      data.cashFlowProjection,
+      ['date', 'in', 'out', 'balance'],
+    )
     this.buildGoalsSheet(workbook, data.goals)
 
     res.setHeader(

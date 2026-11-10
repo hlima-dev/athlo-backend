@@ -1,4 +1,4 @@
-import { PrismaClient, OrgRole, UserStatus } from '@prisma/client'
+import { PrismaClient, OrgRole, OrgModule, TaxRegime, UserStatus } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -126,6 +126,61 @@ async function main() {
   }
 
   console.log(`✅ Membership garantida para ${backfilled} usuário(s)`)
+
+  // ====================================
+  // BACKFILL: permissão de módulo (acesso granular por MEMBER)
+  // ====================================
+  // Mesmo raciocínio do backfill de Membership acima: sem isso, todo
+  // MEMBER já existente ficaria bloqueado de tudo assim que o controle
+  // de acesso por módulo entrar no ar (requireModulePermission.ts nega
+  // por padrão quem não tem registro). Roda em todo deploy, idempotente
+  // via upsert — membros convidados depois continuam nascendo sem nenhum
+  // módulo liberado (comportamento esperado da feature).
+  const existingMembers = await prisma.user.findMany({
+    where: { orgRole: OrgRole.MEMBER },
+    select: { id: true, organizationId: true },
+  })
+
+  let permissionsBackfilled = 0
+  for (const member of existingMembers) {
+    for (const module of Object.values(OrgModule)) {
+      await prisma.modulePermission.upsert({
+        where: { userId_module: { userId: member.id, module } },
+        update: {},
+        create: {
+          organizationId: member.organizationId,
+          userId: member.id,
+          module,
+          enabled: true,
+        },
+      })
+      permissionsBackfilled += 1
+    }
+  }
+
+  console.log(`✅ Permissão de módulo garantida para ${existingMembers.length} membro(s) (${permissionsBackfilled} registros)`)
+
+  // ====================================
+  // PRAZOS FISCAIS (mantidos pelo time ATHLO, não editáveis pelo cliente)
+  // ====================================
+
+  const taxDeadlines = [
+    { regime: TaxRegime.MEI, label: 'DAS — MEI', dayOfMonth: 20 },
+    { regime: TaxRegime.SIMPLES_NACIONAL, label: 'DAS — Simples Nacional', dayOfMonth: 20 },
+  ]
+
+  for (const deadline of taxDeadlines) {
+    const existing = await prisma.taxDeadline.findFirst({
+      where: { regime: deadline.regime, label: deadline.label },
+    })
+    if (existing) {
+      await prisma.taxDeadline.update({ where: { id: existing.id }, data: deadline })
+    } else {
+      await prisma.taxDeadline.create({ data: deadline })
+    }
+  }
+
+  console.log(`✅ ${taxDeadlines.length} prazo(s) fiscal(is) garantido(s)`)
   console.log('\n🎉 Seed concluído com sucesso!')
 }
 

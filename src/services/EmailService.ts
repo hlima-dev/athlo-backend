@@ -111,6 +111,53 @@ export class EmailService {
     })
   }
 
+  async sendInvoiceOverdueReminder(
+    to: string,
+    name: string,
+    description: string,
+    amountFormatted: string,
+    dueDateFormatted: string,
+  ): Promise<void> {
+    await resend.emails.send({
+      from: env.EMAIL_FROM,
+      to,
+      subject: `Fatura vencida: ${description} — ATHLO`,
+      html: layout(
+        'Fatura vencida',
+        `
+          <p>Olá, <strong>${name}</strong>.</p>
+          <p>A fatura <strong>${description}</strong>, no valor de <strong>${amountFormatted}</strong>,
+             venceu em <strong>${dueDateFormatted}</strong> e ainda consta como pendente.</p>
+          ${button(`${env.APP_URL}/financeiro`, 'Ver no ATHLO')}
+        `,
+      ),
+    })
+  }
+
+  async sendTaxObligationReminder(
+    to: string,
+    organizationName: string,
+    obligationLabel: string,
+    dueDateFormatted: string,
+  ): Promise<void> {
+    await resend.emails.send({
+      from: env.EMAIL_FROM,
+      to,
+      subject: `Obrigação fiscal se aproximando: ${obligationLabel} — ATHLO`,
+      html: layout(
+        'Obrigação fiscal se aproximando',
+        `
+          <p>Olá, equipe de <strong>${organizationName}</strong>.</p>
+          <p><strong>${obligationLabel}</strong> vence em <strong>${dueDateFormatted}</strong>.</p>
+          <p style="color: #64748b; font-size: 13px;">
+            Este lembrete é informativo — confirme o valor e a forma de pagamento com seu
+            contador ou no portal do governo antes do vencimento.
+          </p>
+        `,
+      ),
+    })
+  }
+
   async sendOrderStatusUpdate(
     to: string,
     name: string,

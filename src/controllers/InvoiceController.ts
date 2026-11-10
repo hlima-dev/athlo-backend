@@ -76,18 +76,18 @@ export class InvoiceController {
 
   async update(req: Request, res: Response): Promise<void> {
     const data = updateInvoiceSchema.parse(req.body)
-    const invoice = await invoiceService.update(req.user!.organizationId, String(req.params.id), data)
+    const invoice = await invoiceService.update(req.user!.organizationId, String(req.params.id), data, req.user!.id)
     res.status(200).json(successResponse(invoice, 'Fatura atualizada com sucesso'))
   }
 
   async markPaid(req: Request, res: Response): Promise<void> {
     const { method } = markPaidSchema.parse(req.body)
-    const invoice = await invoiceService.markPaid(req.user!.organizationId, String(req.params.id), method)
+    const invoice = await invoiceService.markPaid(req.user!.organizationId, String(req.params.id), method, req.user!.id)
     res.status(200).json(successResponse(invoice, 'Fatura marcada como paga'))
   }
 
   async delete(req: Request, res: Response): Promise<void> {
-    await invoiceService.delete(req.user!.organizationId, String(req.params.id))
+    await invoiceService.delete(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
   }
 

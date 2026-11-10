@@ -2,6 +2,9 @@ import { prisma } from '../config/prisma'
 import { NotFoundError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
 import { ProductType } from '@prisma/client'
+import { AuditLogService } from './AuditLogService'
+
+const auditLogService = new AuditLogService()
 
 interface CreateProductInput {
   name: string
@@ -21,10 +24,21 @@ interface ListProductsFilter {
 }
 
 export class ProductService {
-  async create(organizationId: string, input: CreateProductInput) {
-    return prisma.product.create({
+  async create(organizationId: string, input: CreateProductInput, userId?: string) {
+    const product = await prisma.product.create({
       data: { ...input, organizationId },
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Product',
+      entityId: product.id,
+      action: 'CREATE',
+      summary: `Produto "${product.name}" criado`,
+    })
+
+    return product
   }
 
   async findAll(
@@ -64,13 +78,33 @@ export class ProductService {
     return product
   }
 
-  async update(organizationId: string, id: string, input: UpdateProductInput) {
+  async update(organizationId: string, id: string, input: UpdateProductInput, userId?: string) {
     await this.findById(organizationId, id)
-    return prisma.product.update({ where: { id }, data: input })
+    const product = await prisma.product.update({ where: { id }, data: input })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Product',
+      entityId: product.id,
+      action: 'UPDATE',
+      summary: `Produto "${product.name}" atualizado`,
+    })
+
+    return product
   }
 
-  async delete(organizationId: string, id: string) {
-    await this.findById(organizationId, id)
+  async delete(organizationId: string, id: string, userId?: string) {
+    const existing = await this.findById(organizationId, id)
     await prisma.product.delete({ where: { id } })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Product',
+      entityId: id,
+      action: 'DELETE',
+      summary: `Produto "${existing.name}" excluído`,
+    })
   }
 }

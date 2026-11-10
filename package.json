@@ -17,6 +17,9 @@
     "admin:promote": "tsx scripts/promoteAdmin.ts",
     "reminders:invoices": "tsx scripts/sendInvoiceReminders.ts",
     "reminders:events": "tsx scripts/sendEventReminders.ts",
+    "reminders:overdue": "tsx scripts/markAndRemindOverdueInvoices.ts",
+    "reminders:tax": "tsx scripts/sendTaxObligationReminders.ts",
+    "backfill:module-permissions": "tsx scripts/backfillModulePermissions.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

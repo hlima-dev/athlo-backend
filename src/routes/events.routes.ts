@@ -2,13 +2,15 @@ import { Router } from 'express'
 import { EventController } from '../controllers/EventController'
 import { authenticate, authorize } from '../middlewares/auth'
 import { requireActiveSubscription } from '../middlewares/requireActiveSubscription'
+import { requireModulePermission } from '../middlewares/requireModulePermission'
 import { quickParseLimiter } from '../middlewares/rateLimiter'
-import { OrgRole } from '@prisma/client'
+import { OrgModule, OrgRole } from '@prisma/client'
 
 const router = Router()
 const controller = new EventController()
 
 router.use(authenticate)
+router.use(requireModulePermission(OrgModule.EVENTS))
 
 router.get('/', (req, res) => controller.list(req, res))
 router.post('/quick-parse', quickParseLimiter, (req, res) => controller.parseFromText(req, res))

@@ -2,6 +2,9 @@ import { prisma } from '../config/prisma'
 import { ConflictError, NotFoundError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
 import { ContactStatus, ContactType } from '@prisma/client'
+import { AuditLogService } from './AuditLogService'
+
+const auditLogService = new AuditLogService()
 
 interface CreateContactInput {
   name: string
@@ -28,7 +31,7 @@ interface ListContactsFilter {
 }
 
 export class ContactService {
-  async create(organizationId: string, input: CreateContactInput) {
+  async create(organizationId: string, input: CreateContactInput, userId?: string) {
     const subscription = await prisma.subscription.findUnique({
       where: { organizationId },
       include: { plan: true },
@@ -45,13 +48,24 @@ export class ContactService {
 
     const { tags, ...rest } = input
 
-    return prisma.contact.create({
+    const contact = await prisma.contact.create({
       data: {
         ...rest,
         organizationId,
         tags: tags ? JSON.stringify(tags) : undefined,
       },
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Contact',
+      entityId: contact.id,
+      action: 'CREATE',
+      summary: `Contato "${contact.name}" criado`,
+    })
+
+    return contact
   }
 
   async findAll(
@@ -101,21 +115,41 @@ export class ContactService {
     return contact
   }
 
-  async update(organizationId: string, id: string, input: UpdateContactInput) {
+  async update(organizationId: string, id: string, input: UpdateContactInput, userId?: string) {
     await this.findById(organizationId, id)
     const { tags, ...rest } = input
 
-    return prisma.contact.update({
+    const contact = await prisma.contact.update({
       where: { id },
       data: {
         ...rest,
         ...(tags && { tags: JSON.stringify(tags) }),
       },
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Contact',
+      entityId: contact.id,
+      action: 'UPDATE',
+      summary: `Contato "${contact.name}" atualizado`,
+    })
+
+    return contact
   }
 
-  async delete(organizationId: string, id: string) {
-    await this.findById(organizationId, id)
+  async delete(organizationId: string, id: string, userId?: string) {
+    const existing = await this.findById(organizationId, id)
     await prisma.contact.delete({ where: { id } })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Contact',
+      entityId: id,
+      action: 'DELETE',
+      summary: `Contato "${existing.name}" excluído`,
+    })
   }
 }

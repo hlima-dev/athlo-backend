@@ -2,6 +2,7 @@ import { prisma } from '../config/prisma'
 import { NotFoundError, ValidationError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
 import { EmailService } from './EmailService'
+import { AuditLogService } from './AuditLogService'
 import {
   OrderOrigin,
   OrderPaymentMethod,
@@ -11,6 +12,7 @@ import {
 } from '@prisma/client'
 
 const emailService = new EmailService()
+const auditLogService = new AuditLogService()
 
 const orderStatusLabels: Record<OrderStatus, string> = {
   CREATED: 'Criado',
@@ -75,7 +77,7 @@ export class OrderService {
 
     const total = computeTotal(input.items)
 
-    return prisma.order.create({
+    const order = await prisma.order.create({
       data: {
         organizationId,
         operatorId,
@@ -106,6 +108,17 @@ export class OrderService {
       },
       include: orderInclude,
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId: operatorId,
+      entityType: 'Order',
+      entityId: order.id,
+      action: 'CREATE',
+      summary: `Pedido de "${order.customerName}" criado`,
+    })
+
+    return order
   }
 
   async findAll(organizationId: string, filter: ListOrdersFilter, pagination: PaginationParams) {
@@ -155,7 +168,7 @@ export class OrderService {
     return order
   }
 
-  async update(organizationId: string, id: string, input: UpdateOrderInput) {
+  async update(organizationId: string, id: string, input: UpdateOrderInput, userId?: string) {
     await this.findById(organizationId, id)
 
     const data: Record<string, unknown> = {
@@ -189,14 +202,25 @@ export class OrderService {
       }
     }
 
-    return prisma.order.update({
+    const order = await prisma.order.update({
       where: { id },
       data,
       include: orderInclude,
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Order',
+      entityId: order.id,
+      action: 'UPDATE',
+      summary: `Pedido de "${order.customerName}" atualizado`,
+    })
+
+    return order
   }
 
-  async updateStatus(organizationId: string, id: string, status: OrderStatus) {
+  async updateStatus(organizationId: string, id: string, status: OrderStatus, userId?: string) {
     await this.findById(organizationId, id)
 
     const order = await prisma.order.update({
@@ -206,6 +230,15 @@ export class OrderService {
         ...(status === 'DELIVERED' && { paymentStatus: 'PAID' }),
       },
       include: orderInclude,
+    })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Order',
+      entityId: order.id,
+      action: 'UPDATE',
+      summary: `Pedido de "${order.customerName}" mudou para "${orderStatusLabels[status]}"`,
     })
 
     if (order.contact?.email) {
@@ -224,8 +257,17 @@ export class OrderService {
     return order
   }
 
-  async delete(organizationId: string, id: string) {
-    await this.findById(organizationId, id)
+  async delete(organizationId: string, id: string, userId?: string) {
+    const existing = await this.findById(organizationId, id)
     await prisma.order.delete({ where: { id } })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Order',
+      entityId: id,
+      action: 'DELETE',
+      summary: `Pedido de "${existing.customerName}" excluído`,
+    })
   }
 }

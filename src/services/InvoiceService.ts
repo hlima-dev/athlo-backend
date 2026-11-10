@@ -2,6 +2,9 @@ import { prisma } from '../config/prisma'
 import { NotFoundError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
 import { InvoiceMethod, InvoiceStatus, InvoiceType } from '@prisma/client'
+import { AuditLogService } from './AuditLogService'
+
+const auditLogService = new AuditLogService()
 
 interface CreateInvoiceInput {
   type?: InvoiceType
@@ -25,10 +28,21 @@ interface ListInvoicesFilter {
 
 export class InvoiceService {
   async create(organizationId: string, createdById: string, input: CreateInvoiceInput) {
-    return prisma.invoice.create({
+    const invoice = await prisma.invoice.create({
       data: { ...input, organizationId, createdById },
       include: { contact: { select: { id: true, name: true } } },
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId: createdById,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      action: 'CREATE',
+      summary: `Fatura "${invoice.description}" criada`,
+    })
+
+    return invoice
   }
 
   async findAll(
@@ -78,27 +92,58 @@ export class InvoiceService {
     return invoice
   }
 
-  async update(organizationId: string, id: string, input: UpdateInvoiceInput) {
+  async update(organizationId: string, id: string, input: UpdateInvoiceInput, userId?: string) {
     await this.findById(organizationId, id)
 
-    return prisma.invoice.update({
+    const invoice = await prisma.invoice.update({
       where: { id },
       data: input,
       include: { contact: { select: { id: true, name: true } } },
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      action: 'UPDATE',
+      summary: `Fatura "${invoice.description}" atualizada`,
+    })
+
+    return invoice
   }
 
-  async markPaid(organizationId: string, id: string, method?: InvoiceMethod) {
-    await this.findById(organizationId, id)
+  async markPaid(organizationId: string, id: string, method?: InvoiceMethod, userId?: string) {
+    const existing = await this.findById(organizationId, id)
 
-    return prisma.invoice.update({
+    const invoice = await prisma.invoice.update({
       where: { id },
       data: { status: InvoiceStatus.PAID, paidAt: new Date(), ...(method && { method }) },
     })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      action: 'UPDATE',
+      summary: `Fatura "${existing.description}" marcada como paga`,
+    })
+
+    return invoice
   }
 
-  async delete(organizationId: string, id: string) {
-    await this.findById(organizationId, id)
+  async delete(organizationId: string, id: string, userId?: string) {
+    const existing = await this.findById(organizationId, id)
     await prisma.invoice.delete({ where: { id } })
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Invoice',
+      entityId: id,
+      action: 'DELETE',
+      summary: `Fatura "${existing.description}" excluída`,
+    })
   }
 }
