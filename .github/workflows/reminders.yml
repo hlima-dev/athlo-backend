@@ -16,6 +16,8 @@ jobs:
       DIRECT_URL: ${{ secrets.DIRECT_URL }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
     steps:
       - uses: actions/checkout@v4
 
