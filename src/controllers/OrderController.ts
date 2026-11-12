@@ -154,13 +154,13 @@ export class OrderController {
       }
 
       doc.moveDown(0.5)
-      doc.fontSize(11).fillColor('#0f172a').text('Itens do pedido', { underline: true })
+      doc.fontSize(11).fillColor('#16170F').text('Itens do pedido', { underline: true })
       doc.moveDown(0.3)
 
       order.items.forEach((item) => {
         doc
           .fontSize(10)
-          .fillColor('#0f172a')
+          .fillColor('#16170F')
           .text(
             `${item.quantity}x ${item.name} — ${formatCurrency(item.unitPrice)} = ${formatCurrency(item.total)}`,
           )
@@ -168,13 +168,13 @@ export class OrderController {
 
       doc.moveDown(0.5)
       doc
-        .strokeColor('#e2e8f0')
+        .strokeColor('#E4E0D6')
         .moveTo(doc.x, doc.y)
         .lineTo(doc.page.width - doc.page.margins.right, doc.y)
         .stroke()
       doc.moveDown(0.5)
 
-      doc.fontSize(13).fillColor('#0891b2').text(`Total: ${formatCurrency(order.total)}`)
+      doc.fontSize(13).fillColor('#12352A').text(`Total: ${formatCurrency(order.total)}`)
 
       if (order.notes) {
         doc.moveDown(0.8)
@@ -184,7 +184,7 @@ export class OrderController {
       doc.moveDown(1.5)
       doc
         .fontSize(8)
-        .fillColor('#94a3b8')
+        .fillColor('#9C9A90')
         .text(`Gerado em ${formatDate(new Date())} — ATHLO`, { align: 'center' })
     })
   }

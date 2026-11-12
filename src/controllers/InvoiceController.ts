@@ -123,7 +123,7 @@ export class InvoiceController {
       doc.moveDown(1.5)
       doc
         .fontSize(8)
-        .fillColor('#94a3b8')
+        .fillColor('#9C9A90')
         .text(`Gerado em ${formatDate(new Date())} — ATHLO`, { align: 'center' })
     })
   }

@@ -20,27 +20,27 @@ export class PdfService {
   header(doc: PDFKit.PDFDocument, organizationName: string, title: string): void {
     doc
       .fontSize(20)
-      .fillColor('#0891b2')
+      .fillColor('#12352A')
       .text(organizationName, { continued: false })
     doc.moveDown(0.3)
-    doc.fontSize(14).fillColor('#0f172a').text(title)
+    doc.fontSize(14).fillColor('#16170F').text(title)
     doc.moveDown(0.5)
     doc
-      .strokeColor('#e2e8f0')
+      .strokeColor('#E4E0D6')
       .lineWidth(1)
       .moveTo(doc.x, doc.y)
       .lineTo(doc.page.width - doc.page.margins.right, doc.y)
       .stroke()
     doc.moveDown(1)
-    doc.fillColor('#0f172a')
+    doc.fillColor('#16170F')
   }
 
   field(doc: PDFKit.PDFDocument, label: string, value: string): void {
     doc
       .fontSize(10)
-      .fillColor('#64748b')
+      .fillColor('#6E6C63')
       .text(label, { continued: true })
-      .fillColor('#0f172a')
+      .fillColor('#16170F')
       .text(`  ${value}`)
     doc.moveDown(0.4)
   }
