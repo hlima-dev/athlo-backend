@@ -3,12 +3,15 @@ import { z } from 'zod'
 
 import { InvoiceService } from '../services/InvoiceService'
 import { PdfService, formatCurrency, formatDate } from '../services/PdfService'
+import { NfeXmlService } from '../services/NfeXmlService'
 import { getPagination, successResponse } from '../utils/pagination'
+import { ConflictError, ValidationError } from '../utils/AppError'
 import { prisma } from '../config/prisma'
 import { InvoiceMethod, InvoiceStatus, InvoiceType } from '@prisma/client'
 
 const invoiceService = new InvoiceService()
 const pdfService = new PdfService()
+const nfeXmlService = new NfeXmlService()
 
 const typeLabels: Record<string, string> = {
   RECEIVABLE: 'A receber',
@@ -40,6 +43,7 @@ const createInvoiceSchema = z.object({
   method: z.nativeEnum(InvoiceMethod).optional(),
   notes: z.string().optional(),
   contactId: z.string().optional(),
+  accessKey: z.string().length(44).optional(),
 })
 
 const updateInvoiceSchema = createInvoiceSchema.partial()
@@ -53,6 +57,41 @@ export class InvoiceController {
     const data = createInvoiceSchema.parse(req.body)
     const invoice = await invoiceService.create(req.user!.organizationId, req.user!.id, data)
     res.status(201).json(successResponse(invoice, 'Fatura criada com sucesso'))
+  }
+
+  // Lê o XML de uma NF-e/NFC-e que a empresa já recebeu (não consulta a
+  // SEFAZ) e devolve um rascunho pro usuário revisar antes de salvar —
+  // mesmo padrão do quick-parse por texto da Agenda.
+  async importXml(req: Request, res: Response): Promise<void> {
+    const xml = typeof req.body === 'string' ? req.body : ''
+    if (!xml.trim()) {
+      throw new ValidationError('Envie o conteúdo do arquivo XML da nota fiscal.')
+    }
+
+    const parsed = nfeXmlService.parse(xml)
+
+    const existing = await prisma.invoice.findFirst({
+      where: { organizationId: req.user!.organizationId, accessKey: parsed.accessKey },
+    })
+    if (existing) {
+      throw new ConflictError('Essa nota fiscal já foi importada anteriormente.')
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: req.user!.organizationId },
+      select: { document: true },
+    })
+    const onlyDigits = (value?: string | null) => (value || '').replace(/\D/g, '')
+    const issuedByUs =
+      onlyDigits(organization?.document) !== '' &&
+      onlyDigits(organization?.document) === onlyDigits(parsed.issuerDocument)
+
+    res.status(200).json(
+      successResponse({
+        ...parsed,
+        suggestedType: issuedByUs ? InvoiceType.RECEIVABLE : InvoiceType.PAYABLE,
+      }),
+    )
   }
 
   async list(req: Request, res: Response): Promise<void> {

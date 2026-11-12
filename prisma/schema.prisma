@@ -415,6 +415,10 @@ model Invoice {
   // mesma fatura — mesmo padrão do Event.reminderSentAt.
   reminderSentAt DateTime?
 
+  // Chave de acesso (44 dígitos) da NF-e/NFC-e, quando a fatura nasceu de
+  // uma importação de XML — permite detectar reimportação da mesma nota.
+  accessKey String?
+
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id])
 
@@ -424,6 +428,7 @@ model Invoice {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@unique([organizationId, accessKey])
   @@index([organizationId])
   @@index([organizationId, status, dueDate])
   @@map("invoices")

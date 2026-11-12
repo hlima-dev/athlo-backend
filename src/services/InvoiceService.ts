@@ -1,5 +1,5 @@
 import { prisma } from '../config/prisma'
-import { NotFoundError } from '../utils/AppError'
+import { ConflictError, NotFoundError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
 import { InvoiceMethod, InvoiceStatus, InvoiceType } from '@prisma/client'
 import { AuditLogService } from './AuditLogService'
@@ -15,6 +15,7 @@ interface CreateInvoiceInput {
   method?: InvoiceMethod
   notes?: string
   contactId?: string
+  accessKey?: string
 }
 
 type UpdateInvoiceInput = Partial<CreateInvoiceInput>
@@ -28,6 +29,15 @@ interface ListInvoicesFilter {
 
 export class InvoiceService {
   async create(organizationId: string, createdById: string, input: CreateInvoiceInput) {
+    if (input.accessKey) {
+      const existing = await prisma.invoice.findFirst({
+        where: { organizationId, accessKey: input.accessKey },
+      })
+      if (existing) {
+        throw new ConflictError('Essa nota fiscal já foi importada anteriormente.')
+      }
+    }
+
     const invoice = await prisma.invoice.create({
       data: { ...input, organizationId, createdById },
       include: { contact: { select: { id: true, name: true } } },
