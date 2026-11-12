@@ -1,0 +1,38 @@
+name: Lembretes automáticos (fatura vencida + obrigação fiscal)
+
+# Roda os 2 scripts de lembrete direto no banco de produção, sem depender
+# de um Cron Job pago no Render. Mesmo padrão do keep-alive.yml — rodam
+# em segundos, então o custo em minutos de CI é irrelevante.
+on:
+  schedule:
+    - cron: '0 8 * * *' # todo dia às 08:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  reminders:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.DIRECT_URL }}
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Gerar Prisma Client
+        run: npm run db:generate
+
+      - name: Cobrança de faturas vencidas
+        run: npm run reminders:overdue
+
+      - name: Lembrete de obrigação fiscal
+        if: always()
+        run: npm run reminders:tax
