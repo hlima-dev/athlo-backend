@@ -86,7 +86,7 @@ export class ContactService {
       }),
     }
 
-    const [contacts, total] = await Promise.all([
+    const [contacts, total, totalAll, customers, leads, suppliers] = await Promise.all([
       prisma.contact.findMany({
         where,
         skip: pagination.skip,
@@ -94,9 +94,18 @@ export class ContactService {
         orderBy: { createdAt: 'desc' },
       }),
       prisma.contact.count({ where }),
+      // Resumo sempre da organização inteira, igual ao de Faturas/Produtos
+      // — os indicadores do topo não devem sumir ao buscar por nome.
+      prisma.contact.count({ where: { organizationId } }),
+      prisma.contact.count({ where: { organizationId, type: ContactType.CUSTOMER } }),
+      prisma.contact.count({ where: { organizationId, type: ContactType.LEAD } }),
+      prisma.contact.count({ where: { organizationId, type: ContactType.SUPPLIER } }),
     ])
 
-    return paginate(contacts, total, pagination)
+    return {
+      ...paginate(contacts, total, pagination),
+      summary: { total: totalAll, customers, leads, suppliers },
+    }
   }
 
   async findById(organizationId: string, id: string) {

@@ -71,6 +71,17 @@ export class OrganizationController {
     res.status(200).json(successResponse(permissions))
   }
 
+  // Qualquer usuário autenticado pode ler as próprias permissões — sem
+  // isso, só OWNER/ADMIN conseguiam saber quais módulos um MEMBER tinha
+  // liberado, e o próprio frontend não tinha como filtrar o menu.
+  async myPermissions(req: Request, res: Response): Promise<void> {
+    const permissions = await organizationService.getMemberPermissions(
+      req.user!.organizationId,
+      req.user!.id,
+    )
+    res.status(200).json(successResponse(permissions))
+  }
+
   async updateMemberPermissions(req: Request, res: Response): Promise<void> {
     const { permissions } = updatePermissionsSchema.parse(req.body)
     const result = await organizationService.updateMemberPermissions(

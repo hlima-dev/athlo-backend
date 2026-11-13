@@ -9,6 +9,7 @@ const controller = new OrganizationController()
 router.use(authenticate)
 
 router.get('/me', (req, res) => controller.me(req, res))
+router.get('/me/permissions', (req, res) => controller.myPermissions(req, res))
 router.get('/members', (req, res) => controller.members(req, res))
 
 router.patch(
