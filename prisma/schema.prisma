@@ -419,6 +419,11 @@ model Invoice {
   // uma importação de XML — permite detectar reimportação da mesma nota.
   accessKey String?
 
+  // Conteúdo bruto do XML importado — sem isso, só a chave de acesso
+  // sobrevivia e não havia como recuperar a nota original depois (ex.:
+  // pro contador pedir o arquivo).
+  xmlRaw String? @db.Text
+
   // Preenchido quando a fatura nasceu automaticamente de um pedido pago
   // (ver OrderService) — sem isso, Pedidos e Financeiro eram dois
   // registros desconectados da mesma venda.

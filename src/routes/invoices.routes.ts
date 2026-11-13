@@ -15,6 +15,7 @@ router.use(requireModulePermission(OrgModule.INVOICES))
 router.get('/', (req, res) => controller.list(req, res))
 router.get('/:id', (req, res) => controller.getById(req, res))
 router.get('/:id/pdf', (req, res) => controller.generatePdf(req, res))
+router.get('/:id/xml', (req, res) => controller.downloadXml(req, res))
 router.post(
   '/import-xml',
   quickParseLimiter,

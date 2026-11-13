@@ -44,6 +44,9 @@ const createInvoiceSchema = z.object({
   notes: z.string().optional(),
   contactId: z.string().optional(),
   accessKey: z.string().length(44).optional(),
+  // NF-e/NFC-e raramente passa de poucos KB — teto generoso só pra
+  // evitar abuso, não pra cobrir um caso real.
+  xmlRaw: z.string().max(500_000).optional(),
 })
 
 const updateInvoiceSchema = createInvoiceSchema.partial()
@@ -128,6 +131,20 @@ export class InvoiceController {
   async delete(req: Request, res: Response): Promise<void> {
     await invoiceService.delete(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
+  }
+
+  // Devolve o XML original da NF-e/NFC-e importada — sem isso, uma vez
+  // salva a fatura, o documento ficava irrecuperável (só a chave de
+  // acesso sobrevivia).
+  async downloadXml(req: Request, res: Response): Promise<void> {
+    const invoice = await invoiceService.findById(req.user!.organizationId, String(req.params.id))
+    if (!invoice.xmlRaw) {
+      throw new ValidationError('Essa fatura não tem um XML de nota fiscal associado.')
+    }
+
+    res.setHeader('Content-Type', 'application/xml')
+    res.setHeader('Content-Disposition', `attachment; filename="nfe-${invoice.accessKey ?? invoice.id}.xml"`)
+    res.send(invoice.xmlRaw)
   }
 
   async generatePdf(req: Request, res: Response): Promise<void> {

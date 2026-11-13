@@ -17,6 +17,7 @@ interface CreateInvoiceInput {
   notes?: string
   contactId?: string
   accessKey?: string
+  xmlRaw?: string
   // Os dois a seguir não vêm do formulário público (fora do schema de
   // validação do controller) — só o OrderService os preenche, ao gerar
   // a fatura automática de um pedido pago.
