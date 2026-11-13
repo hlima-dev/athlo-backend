@@ -73,7 +73,7 @@ export class InvoiceService {
       }),
     }
 
-    const [invoices, total, summary] = await Promise.all([
+    const [invoices, total, groups] = await Promise.all([
       prisma.invoice.findMany({
         where,
         skip: pagination.skip,
@@ -82,14 +82,33 @@ export class InvoiceService {
         include: { contact: { select: { id: true, name: true } } },
       }),
       prisma.invoice.count({ where }),
+      // Resumo sempre da organização inteira (ignora o filtro atual da
+      // listagem, de propósito) — os indicadores do topo não devem sumir
+      // quando alguém busca ou filtra por status.
       prisma.invoice.groupBy({
         by: ['type', 'status'],
         where: { organizationId },
         _sum: { amount: true },
+        _count: { _all: true },
       }),
     ])
 
-    return { ...paginate(invoices, total, pagination), summary }
+    let totalReceivable = 0
+    let totalPayable = 0
+    let pending = 0
+    let overdue = 0
+    for (const group of groups) {
+      const amount = Number(group._sum.amount ?? 0)
+      if (group.type === InvoiceType.RECEIVABLE && group.status === InvoiceStatus.PAID) totalReceivable += amount
+      if (group.type === InvoiceType.PAYABLE && group.status === InvoiceStatus.PAID) totalPayable += amount
+      if (group.status === InvoiceStatus.PENDING) pending += group._count._all
+      if (group.status === InvoiceStatus.OVERDUE) overdue += group._count._all
+    }
+
+    return {
+      ...paginate(invoices, total, pagination),
+      summary: { totalReceivable, totalPayable, pending, overdue },
+    }
   }
 
   async findById(organizationId: string, id: string) {

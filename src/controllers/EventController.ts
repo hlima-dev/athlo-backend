@@ -67,7 +67,7 @@ export class EventController {
       ...(status && { status: status as EventStatus }),
     }
 
-    const [events, total] = await Promise.all([
+    const [events, total, scheduledCount, taskCount, deadlineCount, totalAll] = await Promise.all([
       prisma.event.findMany({
         where,
         skip: pagination.skip,
@@ -80,9 +80,20 @@ export class EventController {
         },
       }),
       prisma.event.count({ where }),
+      // Resumo sempre da organização inteira, igual ao de Faturas/Produtos
+      // — os indicadores do topo não devem sumir ao filtrar a lista.
+      prisma.event.count({ where: { organizationId: req.user!.organizationId, status: EventStatus.SCHEDULED } }),
+      prisma.event.count({ where: { organizationId: req.user!.organizationId, type: EventType.TASK } }),
+      prisma.event.count({ where: { organizationId: req.user!.organizationId, type: EventType.DEADLINE } }),
+      prisma.event.count({ where: { organizationId: req.user!.organizationId } }),
     ])
 
-    res.status(200).json(successResponse(paginate(events, total, pagination)))
+    res.status(200).json(
+      successResponse({
+        ...paginate(events, total, pagination),
+        summary: { scheduled: scheduledCount, tasks: taskCount, deadlines: deadlineCount, total: totalAll },
+      }),
+    )
   }
 
   async getById(req: Request, res: Response): Promise<void> {

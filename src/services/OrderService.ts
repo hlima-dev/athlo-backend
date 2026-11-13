@@ -144,7 +144,7 @@ export class OrderService {
       }),
     }
 
-    const [orders, total] = await Promise.all([
+    const [orders, total, openCount, deliveredCount, revenueAgg] = await Promise.all([
       prisma.order.findMany({
         where,
         skip: pagination.skip,
@@ -153,9 +153,24 @@ export class OrderService {
         include: orderInclude,
       }),
       prisma.order.count({ where }),
+      // Os números abaixo respeitam o mesmo filtro da listagem (período,
+      // status, busca) — ao contrário do resumo de Faturas, que é sempre
+      // da organização inteira — porque aqui o filtro de período já é
+      // parte central do fluxo (ex.: "pedidos deste mês").
+      prisma.order.count({ where: { ...where, status: { notIn: [OrderStatus.DELIVERED, OrderStatus.CANCELED] } } }),
+      prisma.order.count({ where: { ...where, status: OrderStatus.DELIVERED } }),
+      prisma.order.aggregate({ where: { ...where, paymentStatus: OrderPaymentStatus.PAID }, _sum: { total: true } }),
     ])
 
-    return paginate(orders, total, pagination)
+    return {
+      ...paginate(orders, total, pagination),
+      summary: {
+        total,
+        open: openCount,
+        delivered: deliveredCount,
+        revenue: Number(revenueAgg._sum.total ?? 0),
+      },
+    }
   }
 
   async findById(organizationId: string, id: string) {

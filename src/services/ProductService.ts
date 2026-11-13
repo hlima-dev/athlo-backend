@@ -55,7 +55,7 @@ export class ProductService {
       }),
     }
 
-    const [products, total] = await Promise.all([
+    const [products, total, totalAll, activeCount, servicesCount] = await Promise.all([
       prisma.product.findMany({
         where,
         skip: pagination.skip,
@@ -63,9 +63,17 @@ export class ProductService {
         orderBy: { createdAt: 'desc' },
       }),
       prisma.product.count({ where }),
+      // Resumo sempre da organização inteira, igual ao de Faturas — não
+      // faz sentido o indicador "ativos" sumir quando alguém busca por nome.
+      prisma.product.count({ where: { organizationId } }),
+      prisma.product.count({ where: { organizationId, active: true } }),
+      prisma.product.count({ where: { organizationId, type: ProductType.SERVICE } }),
     ])
 
-    return paginate(products, total, pagination)
+    return {
+      ...paginate(products, total, pagination),
+      summary: { total: totalAll, active: activeCount, services: servicesCount },
+    }
   }
 
   async findById(organizationId: string, id: string) {
