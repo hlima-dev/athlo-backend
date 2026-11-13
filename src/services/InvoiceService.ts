@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma'
 import { ConflictError, NotFoundError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
+import { assertContactBelongsToOrg } from '../utils/tenantValidation'
 import { InvoiceMethod, InvoiceStatus, InvoiceType } from '@prisma/client'
 import { AuditLogService } from './AuditLogService'
 
@@ -29,6 +30,8 @@ interface ListInvoicesFilter {
 
 export class InvoiceService {
   async create(organizationId: string, createdById: string, input: CreateInvoiceInput) {
+    await assertContactBelongsToOrg(organizationId, input.contactId)
+
     if (input.accessKey) {
       const existing = await prisma.invoice.findFirst({
         where: { organizationId, accessKey: input.accessKey },
@@ -104,6 +107,7 @@ export class InvoiceService {
 
   async update(organizationId: string, id: string, input: UpdateInvoiceInput, userId?: string) {
     await this.findById(organizationId, id)
+    await assertContactBelongsToOrg(organizationId, input.contactId)
 
     const invoice = await prisma.invoice.update({
       where: { id },

@@ -4,6 +4,7 @@ import { env } from '../config/env'
 import { ConflictError, NotFoundError } from '../utils/AppError'
 import { OrgRole } from '@prisma/client'
 import { EmailService } from './EmailService'
+import { AuditLogService } from './AuditLogService'
 
 interface CreateInviteInput {
   email: string
@@ -11,6 +12,7 @@ interface CreateInviteInput {
 }
 
 const emailService = new EmailService()
+const auditLogService = new AuditLogService()
 
 export class InviteService {
   async create(organizationId: string, invitedById: string, input: CreateInviteInput) {
@@ -74,6 +76,15 @@ export class InviteService {
       console.error('Erro ao enviar e-mail de convite:', err)
     }
 
+    void auditLogService.record({
+      organizationId,
+      userId: invitedById,
+      entityType: 'Invite',
+      entityId: invite.id,
+      action: 'CREATE',
+      summary: `Convite enviado para "${invite.email}" como ${invite.role}`,
+    })
+
     return invite
   }
 
@@ -84,11 +95,20 @@ export class InviteService {
     })
   }
 
-  async revoke(organizationId: string, id: string) {
+  async revoke(organizationId: string, id: string, actingUserId?: string) {
     const invite = await prisma.invite.findFirst({ where: { id, organizationId } })
     if (!invite) {
       throw new NotFoundError('Convite')
     }
     await prisma.invite.delete({ where: { id } })
+
+    void auditLogService.record({
+      organizationId,
+      userId: actingUserId,
+      entityType: 'Invite',
+      entityId: id,
+      action: 'DELETE',
+      summary: `Convite para "${invite.email}" revogado`,
+    })
   }
 }

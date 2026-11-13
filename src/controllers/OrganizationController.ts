@@ -44,7 +44,7 @@ export class OrganizationController {
 
   async update(req: Request, res: Response): Promise<void> {
     const data = updateOrganizationSchema.parse(req.body)
-    const organization = await organizationService.update(req.user!.organizationId, data)
+    const organization = await organizationService.update(req.user!.organizationId, data, req.user!.id)
     res.status(200).json(successResponse(organization, 'Empresa atualizada com sucesso'))
   }
 
@@ -77,6 +77,7 @@ export class OrganizationController {
       req.user!.organizationId,
       String(req.params.id),
       permissions,
+      req.user!.id,
     )
     res.status(200).json(successResponse(result, 'Permissões atualizadas com sucesso'))
   }

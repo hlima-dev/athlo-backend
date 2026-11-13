@@ -25,7 +25,7 @@ export class InviteController {
   }
 
   async revoke(req: Request, res: Response): Promise<void> {
-    await inviteService.revoke(req.user!.organizationId, String(req.params.id))
+    await inviteService.revoke(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
   }
 }

@@ -1,6 +1,7 @@
 import { prisma } from '../config/prisma'
 import { NotFoundError, ValidationError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
+import { assertContactBelongsToOrg } from '../utils/tenantValidation'
 import { EmailService } from './EmailService'
 import { AuditLogService } from './AuditLogService'
 import {
@@ -74,6 +75,8 @@ export class OrderService {
     if (!input.items || input.items.length === 0) {
       throw new ValidationError('O pedido precisa ter ao menos um item')
     }
+
+    await assertContactBelongsToOrg(organizationId, input.contactId)
 
     const total = computeTotal(input.items)
 
@@ -170,6 +173,7 @@ export class OrderService {
 
   async update(organizationId: string, id: string, input: UpdateOrderInput, userId?: string) {
     await this.findById(organizationId, id)
+    await assertContactBelongsToOrg(organizationId, input.contactId)
 
     const data: Record<string, unknown> = {
       contactId: input.contactId,

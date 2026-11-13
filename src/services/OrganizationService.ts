@@ -2,9 +2,11 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '../config/prisma'
 import { NotFoundError, UnauthorizedError } from '../utils/AppError'
 import { StripeService } from './StripeService'
+import { AuditLogService } from './AuditLogService'
 import { OrgModule, TaxRegime } from '@prisma/client'
 
 const stripeService = new StripeService()
+const auditLogService = new AuditLogService()
 
 // Módulos com controle de acesso granular — mesma lista do enum OrgModule,
 // usada pra sempre devolver os 5 na mesma ordem (inclusive os que o
@@ -41,9 +43,20 @@ export class OrganizationService {
     return organization
   }
 
-  async update(id: string, input: UpdateOrganizationInput) {
+  async update(id: string, input: UpdateOrganizationInput, userId?: string) {
     await this.findById(id)
-    return prisma.organization.update({ where: { id }, data: input })
+    const organization = await prisma.organization.update({ where: { id }, data: input })
+
+    void auditLogService.record({
+      organizationId: id,
+      userId,
+      entityType: 'Organization',
+      entityId: id,
+      action: 'UPDATE',
+      summary: 'Dados da empresa atualizados',
+    })
+
+    return organization
   }
 
   // LGPD — exclusão definitiva da empresa e cascata de todos os dados
@@ -73,7 +86,25 @@ export class OrganizationService {
       }
     }
 
+    const organization = await prisma.organization.findUnique({
+      where: { id: organizationId },
+      select: { name: true },
+    })
+
     await prisma.organization.delete({ where: { id: organizationId } })
+
+    // Gravado depois do delete — a tabela não tem FK pra organizationId,
+    // de propósito, então esse registro sobrevive à cascata e vira o
+    // único rastro de que essa organização (e todos os dados dela)
+    // existiram e foram apagados.
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Organization',
+      entityId: organizationId,
+      action: 'DELETE',
+      summary: `Empresa "${organization?.name ?? organizationId}" excluída permanentemente por ${user.name}`,
+    })
 
     return { message: 'Empresa e todos os dados associados foram excluídos permanentemente.' }
   }
@@ -121,6 +152,7 @@ export class OrganizationService {
     organizationId: string,
     userId: string,
     updates: { module: OrgModule; enabled: boolean }[],
+    actingUserId?: string,
   ) {
     const member = await prisma.user.findFirst({ where: { id: userId, organizationId } })
     if (!member) {
@@ -136,6 +168,18 @@ export class OrganizationService {
         }),
       ),
     )
+
+    // A ação mais sensível de Equipe — concede/revoga acesso a módulos
+    // inteiros — precisa de trilha própria, independente de quem mexeu.
+    const changes = updates.map((u) => `${u.module}=${u.enabled ? 'liberado' : 'bloqueado'}`).join(', ')
+    void auditLogService.record({
+      organizationId,
+      userId: actingUserId,
+      entityType: 'Permission',
+      entityId: userId,
+      action: 'UPDATE',
+      summary: `Permissões de "${member.name}" atualizadas: ${changes}`,
+    })
 
     return this.getMemberPermissions(organizationId, userId)
   }

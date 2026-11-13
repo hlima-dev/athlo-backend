@@ -7,6 +7,7 @@ import { NotFoundError } from '../utils/AppError'
 import { optionalUrl } from '../utils/validation'
 import { EventTextParserService } from '../services/EventTextParserService'
 import { AuditLogService } from '../services/AuditLogService'
+import { assertContactBelongsToOrg, assertUserBelongsToOrg } from '../utils/tenantValidation'
 
 const eventTextParserService = new EventTextParserService()
 const auditLogService = new AuditLogService()
@@ -33,6 +34,9 @@ const createEventSchema = z.object({
 export class EventController {
   async create(req: Request, res: Response): Promise<void> {
     const data = createEventSchema.parse(req.body)
+    await assertContactBelongsToOrg(req.user!.organizationId, data.contactId)
+    await assertUserBelongsToOrg(req.user!.organizationId, data.assignedToId)
+
     const event = await prisma.event.create({
       data: {
         ...data,
@@ -102,6 +106,8 @@ export class EventController {
       where: { id: String(req.params.id), organizationId: req.user!.organizationId },
     })
     if (!existing) throw new NotFoundError('Evento')
+    await assertContactBelongsToOrg(req.user!.organizationId, data.contactId)
+    await assertUserBelongsToOrg(req.user!.organizationId, data.assignedToId)
 
     const event = await prisma.event.update({
       where: { id: existing.id },
