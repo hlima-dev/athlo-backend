@@ -1,8 +1,14 @@
-name: Lembretes automáticos (fatura vencida + obrigação fiscal)
+name: Lembretes automáticos (fatura vencida + a vencer + obrigação fiscal)
 
-# Roda os 2 scripts de lembrete direto no banco de produção, sem depender
-# de um Cron Job pago no Render. Mesmo padrão do keep-alive.yml — rodam
-# em segundos, então o custo em minutos de CI é irrelevante.
+# Roda os 3 scripts de lembrete diário direto no banco de produção, sem
+# depender de um Cron Job pago no Render. Mesmo padrão do keep-alive.yml —
+# rodam em segundos, então o custo em minutos de CI é irrelevante.
+#
+# O lembrete de evento (scripts/sendEventReminders.ts) fica de fora de
+# propósito: ele precisa rodar a cada ~15 minutos pra fazer sentido
+# ("compromisso prestes a começar"), e nessa frequência o consumo de
+# minutos do GitHub Actions deixa de ser irrelevante — ver conversa com
+# o usuário sobre como agendar esse em particular.
 on:
   schedule:
     - cron: '0 8 * * *' # todo dia às 08:00 UTC
@@ -34,6 +40,10 @@ jobs:
 
       - name: Cobrança de faturas vencidas
         run: npm run reminders:overdue
+
+      - name: Lembrete de fatura a vencer
+        if: always()
+        run: npm run reminders:invoices
 
       - name: Lembrete de obrigação fiscal
         if: always()
