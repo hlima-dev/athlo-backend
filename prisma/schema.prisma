@@ -419,6 +419,12 @@ model Invoice {
   // uma importação de XML — permite detectar reimportação da mesma nota.
   accessKey String?
 
+  // Preenchido quando a fatura nasceu automaticamente de um pedido pago
+  // (ver OrderService) — sem isso, Pedidos e Financeiro eram dois
+  // registros desconectados da mesma venda.
+  orderId String? @unique
+  order   Order?  @relation(fields: [orderId], references: [id])
+
   contactId String?
   contact   Contact? @relation(fields: [contactId], references: [id])
 
@@ -467,6 +473,10 @@ model Order {
   operator   User?   @relation("OrderOperator", fields: [operatorId], references: [id])
 
   items OrderItem[]
+
+  // Fatura gerada automaticamente quando o pedido vira pago — ver
+  // Invoice.orderId.
+  invoice Invoice?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

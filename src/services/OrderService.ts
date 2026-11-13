@@ -4,7 +4,10 @@ import { paginate, PaginationParams } from '../utils/pagination'
 import { assertContactBelongsToOrg } from '../utils/tenantValidation'
 import { EmailService } from './EmailService'
 import { AuditLogService } from './AuditLogService'
+import { InvoiceService } from './InvoiceService'
 import {
+  InvoiceStatus,
+  InvoiceType,
   OrderOrigin,
   OrderPaymentMethod,
   OrderPaymentStatus,
@@ -14,6 +17,7 @@ import {
 
 const emailService = new EmailService()
 const auditLogService = new AuditLogService()
+const invoiceService = new InvoiceService()
 
 const orderStatusLabels: Record<OrderStatus, string> = {
   CREATED: 'Criado',
@@ -68,9 +72,40 @@ const orderInclude = {
   contact: { select: { id: true, name: true, phone: true, email: true } },
   operator: { select: { id: true, name: true } },
   items: { include: { product: { select: { id: true, name: true } } } },
+  invoice: { select: { id: true } },
 }
 
 export class OrderService {
+  // Gera a fatura (a receber, já paga) correspondente assim que o pedido
+  // vira pago — sem isso, Pedidos e Financeiro ficam sem nenhuma ligação,
+  // e quem fatura vários pedidos por dia precisa lançar cada um à parte
+  // manualmente. Idempotente: não duplica se já existe fatura pro pedido.
+  private async ensureInvoiceForPaidOrder(
+    organizationId: string,
+    order: { id: string; customerName: string; contactId: string | null; paymentStatus: OrderPaymentStatus; total: unknown },
+    userId?: string,
+  ) {
+    if (order.paymentStatus !== OrderPaymentStatus.PAID || !userId) return
+
+    const existing = await prisma.invoice.findUnique({ where: { orderId: order.id } })
+    if (existing) return
+
+    try {
+      await invoiceService.create(organizationId, userId, {
+        type: InvoiceType.RECEIVABLE,
+        description: `Pedido de "${order.customerName}"`,
+        amount: Number(order.total),
+        dueDate: new Date(),
+        status: InvoiceStatus.PAID,
+        paidAt: new Date(),
+        contactId: order.contactId ?? undefined,
+        orderId: order.id,
+      })
+    } catch (err) {
+      console.error('Erro ao gerar fatura automática do pedido:', err)
+    }
+  }
+
   async create(organizationId: string, operatorId: string, input: CreateOrderInput) {
     if (!input.items || input.items.length === 0) {
       throw new ValidationError('O pedido precisa ter ao menos um item')
@@ -120,6 +155,8 @@ export class OrderService {
       action: 'CREATE',
       summary: `Pedido de "${order.customerName}" criado`,
     })
+
+    await this.ensureInvoiceForPaidOrder(organizationId, order, operatorId)
 
     return order
   }
@@ -236,6 +273,8 @@ export class OrderService {
       summary: `Pedido de "${order.customerName}" atualizado`,
     })
 
+    await this.ensureInvoiceForPaidOrder(organizationId, order, userId)
+
     return order
   }
 
@@ -259,6 +298,8 @@ export class OrderService {
       action: 'UPDATE',
       summary: `Pedido de "${order.customerName}" mudou para "${orderStatusLabels[status]}"`,
     })
+
+    await this.ensureInvoiceForPaidOrder(organizationId, order, userId)
 
     if (order.contact?.email) {
       try {
