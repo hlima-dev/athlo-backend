@@ -109,19 +109,29 @@ export class ContactService {
   }
 
   async findById(organizationId: string, id: string) {
-    const contact = await prisma.contact.findFirst({
-      where: { id, organizationId },
-      include: {
-        invoices: { orderBy: { dueDate: 'desc' }, take: 20 },
-        events: { orderBy: { startDate: 'desc' }, take: 20 },
-      },
-    })
+    const [contact, balanceAgg] = await Promise.all([
+      prisma.contact.findFirst({
+        where: { id, organizationId },
+        include: {
+          invoices: { orderBy: { dueDate: 'desc' }, take: 20 },
+          events: { orderBy: { startDate: 'desc' }, take: 20 },
+          orders: { orderBy: { createdAt: 'desc' }, take: 20 },
+        },
+      }),
+      // Quanto esse contato deve, somando TODAS as faturas em aberto —
+      // não só as 20 mais recentes acima, que são só pra exibição da
+      // linha do tempo.
+      prisma.invoice.aggregate({
+        where: { organizationId, contactId: id, type: 'RECEIVABLE', status: { in: ['PENDING', 'OVERDUE'] } },
+        _sum: { amount: true },
+      }),
+    ])
 
     if (!contact) {
       throw new NotFoundError('Contato')
     }
 
-    return contact
+    return { ...contact, balanceDue: Number(balanceAgg._sum.amount ?? 0) }
   }
 
   async update(organizationId: string, id: string, input: UpdateContactInput, userId?: string) {
