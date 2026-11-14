@@ -9,7 +9,7 @@ const createNotificationSchema = z.object({
   type: z.nativeEnum(NotificationType).default(NotificationType.INFO),
   title: z.string().min(1),
   body: z.string().min(1),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 })
 
 export class NotificationController {
