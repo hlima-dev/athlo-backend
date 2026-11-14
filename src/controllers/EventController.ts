@@ -59,12 +59,18 @@ export class EventController {
 
   async list(req: Request, res: Response): Promise<void> {
     const pagination = getPagination(req)
-    const { type, status } = req.query
+    const { type, status, from, to } = req.query
 
     const where = {
       organizationId: req.user!.organizationId,
       ...(type && { type: type as EventType }),
       ...(status && { status: status as EventStatus }),
+      ...((from || to) && {
+        startDate: {
+          ...(from && { gte: new Date(String(from)) }),
+          ...(to && { lte: new Date(String(to)) }),
+        },
+      }),
     }
 
     const [events, total, scheduledCount, taskCount, deadlineCount, totalAll] = await Promise.all([

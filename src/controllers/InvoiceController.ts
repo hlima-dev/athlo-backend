@@ -105,6 +105,8 @@ export class InvoiceController {
       status: req.query.status as InvoiceStatus | undefined,
       contactId: req.query.contactId as string | undefined,
       search: req.query.search as string | undefined,
+      from: req.query.from ? new Date(String(req.query.from)) : undefined,
+      to: req.query.to ? new Date(String(req.query.to)) : undefined,
     }
 
     const result = await invoiceService.findAll(req.user!.organizationId, filter, pagination)

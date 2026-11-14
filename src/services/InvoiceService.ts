@@ -32,6 +32,8 @@ interface ListInvoicesFilter {
   status?: InvoiceStatus
   contactId?: string
   search?: string
+  from?: Date
+  to?: Date
 }
 
 export class InvoiceService {
@@ -76,6 +78,12 @@ export class InvoiceService {
       ...(filter.contactId && { contactId: filter.contactId }),
       ...(filter.search && {
         description: { contains: filter.search, mode: 'insensitive' as const },
+      }),
+      ...((filter.from || filter.to) && {
+        dueDate: {
+          ...(filter.from && { gte: filter.from }),
+          ...(filter.to && { lte: filter.to }),
+        },
       }),
     }
 
