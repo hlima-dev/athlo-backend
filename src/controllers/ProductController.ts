@@ -14,6 +14,8 @@ const createProductSchema = z.object({
   type: z.nativeEnum(ProductType).optional(),
   price: z.number().nonnegative(),
   active: z.boolean().optional(),
+  stockQty: z.number().int().nonnegative().nullable().optional(),
+  lowStockThreshold: z.number().int().nonnegative().nullable().optional(),
 })
 
 const updateProductSchema = createProductSchema.partial()

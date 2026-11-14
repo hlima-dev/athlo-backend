@@ -55,6 +55,8 @@ export class DashboardController {
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
     const in90Days = new Date(now.getTime() + CASH_FLOW_PROJECTION_DAYS * 24 * 60 * 60 * 1000)
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0)
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59)
 
     const [
       contactsCount,
@@ -67,6 +69,10 @@ export class DashboardController {
       allContacts,
       upcomingEvents,
       projectedInvoices,
+      overdueInvoices,
+      overdueInvoicesTotal,
+      todayEvents,
+      trackedProducts,
     ] = await Promise.all([
       prisma.contact.count({ where: { organizationId } }),
       prisma.user.count({ where: { organizationId } }),
@@ -108,7 +114,33 @@ export class DashboardController {
         },
         select: { type: true, amount: true, dueDate: true },
       }),
+      // Painel "precisa de atenção" — cada bloco abaixo alimenta uma
+      // seção dele (faturas vencidas, compromissos de hoje, estoque baixo).
+      prisma.invoice.findMany({
+        where: { organizationId, status: 'OVERDUE' },
+        orderBy: { dueDate: 'asc' },
+        take: 5,
+        select: { id: true, description: true, amount: true, dueDate: true, type: true },
+      }),
+      prisma.invoice.count({ where: { organizationId, status: 'OVERDUE' } }),
+      prisma.event.findMany({
+        where: {
+          organizationId,
+          startDate: { gte: startOfToday, lte: endOfToday },
+          status: { not: 'CANCELED' },
+        },
+        orderBy: { startDate: 'asc' },
+        take: 5,
+        select: { id: true, title: true, type: true, startDate: true },
+      }),
+      prisma.product.findMany({
+        where: { organizationId, active: true, stockQty: { not: null }, lowStockThreshold: { not: null } },
+        select: { id: true, name: true, stockQty: true, lowStockThreshold: true },
+      }),
     ])
+
+    const lowStockAll = trackedProducts.filter((p) => (p.stockQty ?? 0) <= (p.lowStockThreshold ?? 0))
+    const lowStockProducts = lowStockAll.slice(0, 5)
 
     const cashFlowProjection = buildCashFlowProjection(
       projectedInvoices.map((invoice) => ({
@@ -155,6 +187,13 @@ export class DashboardController {
       growthData,
       upcomingEvents,
       cashFlowProjection,
+      attention: {
+        overdueInvoices: overdueInvoices.map((invoice) => ({ ...invoice, amount: Number(invoice.amount) })),
+        overdueInvoicesTotal,
+        todayEvents,
+        lowStockProducts,
+        lowStockTotal: lowStockAll.length,
+      },
     }
   }
 
@@ -175,18 +214,24 @@ export class DashboardController {
       prisma.organization.findUnique({ where: { id: organizationId } }),
     ])
 
+    // Usa a meta configurada pela empresa (Relatórios) quando existe —
+    // sem isso, cai nos mesmos valores fixos de sempre.
+    const contactsGoal = organization?.contactsGoal ?? GOAL_TARGETS.contacts
+    const eventsGoal = organization?.eventsGoal ?? GOAL_TARGETS.events
+    const revenueGoal = Number(organization?.revenueGoal ?? GOAL_TARGETS.revenue)
+
     const goals = [
       {
-        title: `Contatos vs meta (${GOAL_TARGETS.contacts})`,
-        value: Math.min(Math.round((data.contacts / GOAL_TARGETS.contacts) * 100), 100),
+        title: `Contatos vs meta (${contactsGoal})`,
+        value: Math.min(Math.round((data.contacts / contactsGoal) * 100), 100),
       },
       {
-        title: `Compromissos vs meta (${GOAL_TARGETS.events})`,
-        value: Math.min(Math.round((data.events / GOAL_TARGETS.events) * 100), 100),
+        title: `Compromissos vs meta (${eventsGoal})`,
+        value: Math.min(Math.round((data.events / eventsGoal) * 100), 100),
       },
       {
-        title: `Receita vs meta (R$ ${GOAL_TARGETS.revenue.toLocaleString('pt-BR')})`,
-        value: Math.min(Math.round((data.revenue / GOAL_TARGETS.revenue) * 100), 100),
+        title: `Receita vs meta (R$ ${revenueGoal.toLocaleString('pt-BR')})`,
+        value: Math.min(Math.round((data.revenue / revenueGoal) * 100), 100),
       },
     ]
 

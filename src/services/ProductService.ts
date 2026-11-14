@@ -13,6 +13,8 @@ interface CreateProductInput {
   type?: ProductType
   price: number
   active?: boolean
+  stockQty?: number | null
+  lowStockThreshold?: number | null
 }
 
 type UpdateProductInput = Partial<CreateProductInput>
@@ -55,7 +57,7 @@ export class ProductService {
       }),
     }
 
-    const [products, total, totalAll, activeCount, servicesCount] = await Promise.all([
+    const [products, total, totalAll, activeCount, servicesCount, trackedStock] = await Promise.all([
       prisma.product.findMany({
         where,
         skip: pagination.skip,
@@ -68,11 +70,19 @@ export class ProductService {
       prisma.product.count({ where: { organizationId } }),
       prisma.product.count({ where: { organizationId, active: true } }),
       prisma.product.count({ where: { organizationId, type: ProductType.SERVICE } }),
+      // Prisma não compara duas colunas entre si num where — busca os
+      // rastreados (poucos, numa PME) e filtra em memória.
+      prisma.product.findMany({
+        where: { organizationId, active: true, stockQty: { not: null }, lowStockThreshold: { not: null } },
+        select: { stockQty: true, lowStockThreshold: true },
+      }),
     ])
+
+    const lowStockCount = trackedStock.filter((p) => (p.stockQty ?? 0) <= (p.lowStockThreshold ?? 0)).length
 
     return {
       ...paginate(products, total, pagination),
-      summary: { total: totalAll, active: activeCount, services: servicesCount },
+      summary: { total: totalAll, active: activeCount, services: servicesCount, lowStock: lowStockCount },
     }
   }
 

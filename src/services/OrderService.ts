@@ -13,6 +13,7 @@ import {
   OrderPaymentStatus,
   OrderStatus,
   OrderType,
+  Prisma,
 } from '@prisma/client'
 
 const emailService = new EmailService()
@@ -76,6 +77,53 @@ const orderInclude = {
 }
 
 export class OrderService {
+  // Debita (direction=-1) ou devolve (direction=1) o estoque dos produtos
+  // rastreados (stockQty não nulo) usados pelos itens de um pedido. Produto
+  // sem stockQty configurado é ignorado — continua sem controle de estoque.
+  // Lança erro se uma baixa deixaria algum produto com estoque negativo.
+  private async adjustStock(
+    tx: Prisma.TransactionClient,
+    items: { productId?: string | null; quantity: number }[],
+    direction: 1 | -1,
+  ) {
+    const productIds = [...new Set(items.filter((item) => item.productId).map((item) => item.productId as string))]
+    if (productIds.length === 0) return
+
+    const trackedProducts = await tx.product.findMany({
+      where: { id: { in: productIds }, stockQty: { not: null } },
+      select: { id: true, name: true, stockQty: true },
+    })
+    if (trackedProducts.length === 0) return
+
+    const byId = new Map(trackedProducts.map((product) => [product.id, product]))
+
+    // Soma por produto (um pedido pode repetir o mesmo produto em mais de
+    // uma linha).
+    const quantityByProduct = new Map<string, number>()
+    for (const item of items) {
+      if (!item.productId || !byId.has(item.productId)) continue
+      quantityByProduct.set(item.productId, (quantityByProduct.get(item.productId) ?? 0) + item.quantity)
+    }
+
+    if (direction === -1) {
+      for (const [productId, quantity] of quantityByProduct) {
+        const product = byId.get(productId)!
+        if ((product.stockQty ?? 0) < quantity) {
+          throw new ValidationError(
+            `Estoque insuficiente para "${product.name}": disponível ${product.stockQty}, pedido precisa de ${quantity}`,
+          )
+        }
+      }
+    }
+
+    for (const [productId, quantity] of quantityByProduct) {
+      await tx.product.update({
+        where: { id: productId },
+        data: { stockQty: { increment: direction * quantity } },
+      })
+    }
+  }
+
   // Gera a fatura (a receber, já paga) correspondente assim que o pedido
   // vira pago — sem isso, Pedidos e Financeiro ficam sem nenhuma ligação,
   // e quem fatura vários pedidos por dia precisa lançar cada um à parte
@@ -115,36 +163,42 @@ export class OrderService {
 
     const total = computeTotal(input.items)
 
-    const order = await prisma.order.create({
-      data: {
-        organizationId,
-        operatorId,
-        contactId: input.contactId,
-        customerName: input.customerName,
-        customerPhone: input.customerPhone,
-        type: input.type,
-        status: input.status,
-        origin: input.origin,
-        paymentMethod: input.paymentMethod,
-        paymentStatus: input.paymentStatus,
-        address: input.address,
-        city: input.city,
-        state: input.state,
-        zipCode: input.zipCode,
-        notes: input.notes,
-        scheduledAt: input.scheduledAt,
-        total,
-        items: {
-          create: input.items.map((item) => ({
-            productId: item.productId,
-            name: item.name,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            total: item.quantity * item.unitPrice,
-          })),
+    const order = await prisma.$transaction(async (tx) => {
+      if (input.status !== OrderStatus.CANCELED) {
+        await this.adjustStock(tx, input.items!, -1)
+      }
+
+      return tx.order.create({
+        data: {
+          organizationId,
+          operatorId,
+          contactId: input.contactId,
+          customerName: input.customerName,
+          customerPhone: input.customerPhone,
+          type: input.type,
+          status: input.status,
+          origin: input.origin,
+          paymentMethod: input.paymentMethod,
+          paymentStatus: input.paymentStatus,
+          address: input.address,
+          city: input.city,
+          state: input.state,
+          zipCode: input.zipCode,
+          notes: input.notes,
+          scheduledAt: input.scheduledAt,
+          total,
+          items: {
+            create: input.items!.map((item) => ({
+              productId: item.productId,
+              name: item.name,
+              quantity: item.quantity,
+              unitPrice: item.unitPrice,
+              total: item.quantity * item.unitPrice,
+            })),
+          },
         },
-      },
-      include: orderInclude,
+        include: orderInclude,
+      })
     })
 
     void auditLogService.record({
@@ -224,7 +278,7 @@ export class OrderService {
   }
 
   async update(organizationId: string, id: string, input: UpdateOrderInput, userId?: string) {
-    await this.findById(organizationId, id)
+    const existing = await this.findById(organizationId, id)
     await assertContactBelongsToOrg(organizationId, input.contactId)
 
     const data: Record<string, unknown> = {
@@ -244,24 +298,43 @@ export class OrderService {
       scheduledAt: input.scheduledAt,
     }
 
-    if (input.items && input.items.length > 0) {
-      data.total = computeTotal(input.items)
-      await prisma.orderItem.deleteMany({ where: { orderId: id } })
-      data.items = {
-        create: input.items.map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          unitPrice: item.unitPrice,
-          total: item.quantity * item.unitPrice,
-        })),
-      }
+    const itemsChanged = !!(input.items && input.items.length > 0)
+    if (itemsChanged) {
+      data.total = computeTotal(input.items!)
     }
 
-    const order = await prisma.order.update({
-      where: { id },
-      data,
-      include: orderInclude,
+    const existingStatus = existing.status
+    const newStatus = input.status ?? existingStatus
+
+    const order = await prisma.$transaction(async (tx) => {
+      // Estoque reservado = pedido não cancelado. Só mexe no estoque
+      // quando a reserva muda (itens mudaram enquanto não cancelado, ou
+      // o status cruzou de/para CANCELED) — ver OrderService.adjustStock.
+      if (existingStatus !== OrderStatus.CANCELED && newStatus !== OrderStatus.CANCELED) {
+        if (itemsChanged) {
+          await this.adjustStock(tx, existing.items, 1)
+          await this.adjustStock(tx, input.items!, -1)
+        }
+      } else if (existingStatus !== OrderStatus.CANCELED && newStatus === OrderStatus.CANCELED) {
+        await this.adjustStock(tx, existing.items, 1)
+      } else if (existingStatus === OrderStatus.CANCELED && newStatus !== OrderStatus.CANCELED) {
+        await this.adjustStock(tx, itemsChanged ? input.items! : existing.items, -1)
+      }
+
+      if (itemsChanged) {
+        await tx.orderItem.deleteMany({ where: { orderId: id } })
+        data.items = {
+          create: input.items!.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+            total: item.quantity * item.unitPrice,
+          })),
+        }
+      }
+
+      return tx.order.update({ where: { id }, data, include: orderInclude })
     })
 
     void auditLogService.record({
@@ -279,15 +352,23 @@ export class OrderService {
   }
 
   async updateStatus(organizationId: string, id: string, status: OrderStatus, userId?: string) {
-    await this.findById(organizationId, id)
+    const existing = await this.findById(organizationId, id)
 
-    const order = await prisma.order.update({
-      where: { id },
-      data: {
-        status,
-        ...(status === 'DELIVERED' && { paymentStatus: 'PAID' }),
-      },
-      include: orderInclude,
+    const order = await prisma.$transaction(async (tx) => {
+      if (existing.status !== OrderStatus.CANCELED && status === OrderStatus.CANCELED) {
+        await this.adjustStock(tx, existing.items, 1)
+      } else if (existing.status === OrderStatus.CANCELED && status !== OrderStatus.CANCELED) {
+        await this.adjustStock(tx, existing.items, -1)
+      }
+
+      return tx.order.update({
+        where: { id },
+        data: {
+          status,
+          ...(status === 'DELIVERED' && { paymentStatus: 'PAID' }),
+        },
+        include: orderInclude,
+      })
     })
 
     void auditLogService.record({
@@ -319,7 +400,13 @@ export class OrderService {
 
   async delete(organizationId: string, id: string, userId?: string) {
     const existing = await this.findById(organizationId, id)
-    await prisma.order.delete({ where: { id } })
+
+    await prisma.$transaction(async (tx) => {
+      if (existing.status !== OrderStatus.CANCELED) {
+        await this.adjustStock(tx, existing.items, 1)
+      }
+      await tx.order.delete({ where: { id } })
+    })
 
     void auditLogService.record({
       organizationId,

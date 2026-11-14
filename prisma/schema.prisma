@@ -392,6 +392,13 @@ model Product {
   price       Decimal     @db.Decimal(10, 2)
   active      Boolean     @default(true)
 
+  // Controle de estoque opcional — nulo significa "não rastreado" (ex.:
+  // serviços, ou produto cujo dono não quer controlar quantidade). Quando
+  // setado, OrderService debita/devolve automaticamente ao criar, editar,
+  // cancelar ou excluir um pedido que usa este produto.
+  stockQty          Int?
+  lowStockThreshold Int?
+
   orderItems OrderItem[]
 
   createdAt DateTime @default(now())
