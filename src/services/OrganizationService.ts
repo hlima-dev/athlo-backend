@@ -24,6 +24,9 @@ interface UpdateOrganizationInput {
   zipCode?: string
   logoUrl?: string
   taxRegime?: TaxRegime | null
+  contactsGoal?: number | null
+  eventsGoal?: number | null
+  revenueGoal?: number | null
 }
 
 export class OrganizationService {

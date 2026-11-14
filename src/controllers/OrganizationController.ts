@@ -23,6 +23,9 @@ const updateOrganizationSchema = z.object({
   zipCode: z.string().optional(),
   logoUrl: optionalUrl,
   taxRegime: z.nativeEnum(TaxRegime).nullable().optional(),
+  contactsGoal: z.number().int().positive().nullable().optional(),
+  eventsGoal: z.number().int().positive().nullable().optional(),
+  revenueGoal: z.number().positive().nullable().optional(),
 })
 
 const updatePermissionsSchema = z.object({

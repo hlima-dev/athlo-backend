@@ -184,6 +184,13 @@ model Organization {
   // — sem isso setado, a organização simplesmente não entra na rotina.
   taxRegime TaxRegime?
 
+  // Metas exibidas em Relatórios ("Metas estratégicas") — nulo usa o
+  // valor padrão calculado no frontend, pra empresa que ainda não
+  // configurou as próprias metas.
+  contactsGoal Int?
+  eventsGoal   Int?
+  revenueGoal  Decimal? @db.Decimal(12, 2)
+
   users              User[]
   memberships        Membership[]
   contacts           Contact[]
