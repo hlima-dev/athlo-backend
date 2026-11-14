@@ -12,8 +12,10 @@
  */
 import { prisma } from '../src/config/prisma'
 import { EmailService } from '../src/services/EmailService'
+import { AuditLogService } from '../src/services/AuditLogService'
 
 const emailService = new EmailService()
+const auditLogService = new AuditLogService()
 const DAYS_BEFORE = 3
 
 function monthKey(date: Date): string {
@@ -76,6 +78,13 @@ async function main() {
             taxDeadlineId: deadline.id,
             remindedForMonth: currentMonth,
           },
+        })
+        void auditLogService.record({
+          organizationId: organization.id,
+          entityType: 'Organization',
+          entityId: organization.id,
+          action: 'UPDATE',
+          summary: `Lembrete de obrigação fiscal enviado para ${owner.name} (${owner.email}) — "${deadline.label}", vence em ${dueDateFormatted}`,
         })
         console.log(`✅ Lembrete enviado: "${deadline.label}" -> ${organization.name}`)
       } catch (err) {

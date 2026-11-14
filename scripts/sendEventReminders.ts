@@ -12,8 +12,10 @@
  */
 import { prisma } from '../src/config/prisma'
 import { NotificationService } from '../src/services/NotificationService'
+import { AuditLogService } from '../src/services/AuditLogService'
 
 const notificationService = new NotificationService()
+const auditLogService = new AuditLogService()
 
 // Janela de "está prestes a começar" — precisa ser maior ou igual ao
 // intervalo do cron, senão um compromisso pode passar batido entre duas
@@ -59,6 +61,14 @@ async function main() {
       await prisma.event.update({
         where: { id: event.id },
         data: { reminderSentAt: new Date() },
+      })
+
+      void auditLogService.record({
+        organizationId: event.organizationId,
+        entityType: 'Event',
+        entityId: event.id,
+        action: 'UPDATE',
+        summary: `Lembrete de compromisso enviado para ${recipient.name} — "${event.title}"`,
       })
 
       console.log(`✅ Lembrete enviado: "${event.title}" -> ${recipient.email}`)

@@ -415,6 +415,13 @@ model Invoice {
   // mesma fatura — mesmo padrão do Event.reminderSentAt.
   reminderSentAt DateTime?
 
+  // Campo separado (não reaproveita reminderSentAt) porque é um aviso
+  // diferente — "vence em breve", disparado por
+  // scripts/sendInvoiceReminders.ts antes da fatura vencer. Reaproveitar
+  // o mesmo campo faria a fatura "pular" o lembrete de vencida depois,
+  // já que os dois scripts rodam em janelas de tempo diferentes.
+  dueSoonReminderSentAt DateTime?
+
   // Chave de acesso (44 dígitos) da NF-e/NFC-e, quando a fatura nasceu de
   // uma importação de XML — permite detectar reimportação da mesma nota.
   accessKey String?

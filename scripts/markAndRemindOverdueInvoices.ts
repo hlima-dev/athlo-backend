@@ -13,9 +13,11 @@
  */
 import { prisma } from '../src/config/prisma'
 import { EmailService } from '../src/services/EmailService'
+import { AuditLogService } from '../src/services/AuditLogService'
 import { formatCurrency, formatDate } from '../src/services/PdfService'
 
 const emailService = new EmailService()
+const auditLogService = new AuditLogService()
 
 async function main() {
   const now = new Date()
@@ -59,6 +61,13 @@ async function main() {
       await prisma.invoice.update({
         where: { id: invoice.id },
         data: { reminderSentAt: new Date() },
+      })
+      void auditLogService.record({
+        organizationId: invoice.organizationId,
+        entityType: 'Invoice',
+        entityId: invoice.id,
+        action: 'UPDATE',
+        summary: `Lembrete de cobrança enviado para ${name} (${email}) — fatura "${invoice.description}" vencida`,
       })
       console.log(`✅ Cobrança enviada: ${invoice.description} -> ${email}`)
     } catch (err) {

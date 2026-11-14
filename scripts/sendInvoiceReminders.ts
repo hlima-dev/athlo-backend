@@ -9,9 +9,11 @@
  */
 import { prisma } from '../src/config/prisma'
 import { EmailService } from '../src/services/EmailService'
+import { AuditLogService } from '../src/services/AuditLogService'
 import { formatCurrency, formatDate } from '../src/services/PdfService'
 
 const emailService = new EmailService()
+const auditLogService = new AuditLogService()
 
 async function main() {
   const now = new Date()
@@ -22,6 +24,10 @@ async function main() {
       status: 'PENDING',
       type: 'RECEIVABLE',
       dueDate: { gte: now, lte: in2Days },
+      // Campo próprio (não reaproveita reminderSentAt, que é do lembrete
+      // de vencida) — sem isso, uma fatura que fica 2 dias na janela
+      // "vence em breve" recebia o mesmo lembrete de novo no dia seguinte.
+      dueSoonReminderSentAt: null,
     },
     include: { contact: true },
   })
@@ -42,6 +48,17 @@ async function main() {
         formatCurrency(invoice.amount),
         formatDate(invoice.dueDate),
       )
+      await prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { dueSoonReminderSentAt: new Date() },
+      })
+      void auditLogService.record({
+        organizationId: invoice.organizationId,
+        entityType: 'Invoice',
+        entityId: invoice.id,
+        action: 'UPDATE',
+        summary: `Lembrete de vencimento próximo enviado para ${name} (${email}) — fatura "${invoice.description}"`,
+      })
       console.log(`✅ Lembrete enviado: ${invoice.description} -> ${email}`)
     } catch (err) {
       console.error(`❌ Falha ao enviar lembrete de "${invoice.description}":`, err)
