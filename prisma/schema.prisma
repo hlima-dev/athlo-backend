@@ -156,6 +156,7 @@ enum OrgModule {
   PRODUCTS
   ORDERS
   EVENTS
+  INSUMOS
 }
 
 enum AuditAction {
@@ -202,6 +203,7 @@ model Organization {
   subscription       Subscription?
   modulePermissions  ModulePermission[]
   taxReminderLogs    TaxReminderLog[]
+  insumos            Insumo[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -367,9 +369,10 @@ model Contact {
   tags    String?        // JSON array como string
   notes   String?        @db.Text
 
-  invoices Invoice[]
-  events   Event[]
-  orders   Order[]
+  invoices    Invoice[]
+  events      Event[]
+  orders      Order[]
+  insumoPrices InsumoPrice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -399,13 +402,77 @@ model Product {
   stockQty          Int?
   lowStockThreshold Int?
 
-  orderItems OrderItem[]
+  // Calculadora de margem (ficha técnica) — todos opcionais, default "não
+  // uso isso". productionCost vem da soma da receita (recipeItems), não é
+  // um campo salvo — só esses 3 descontos extras ficam no produto.
+  taxPercent        Decimal? @db.Decimal(5, 2)
+  paymentFeePercent Decimal? @db.Decimal(5, 2)
+  shippingCost      Decimal? @db.Decimal(10, 2)
+
+  orderItems  OrderItem[]
+  recipeItems RecipeItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@map("products")
+}
+
+// ─── Insumos ─────────────────────────────────
+
+model Insumo {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name   String
+  unit   String // "kg" | "g" | "L" | "mL" | "unidade" | "pacote" | "dúzia" — texto livre, sem conversão entre unidades
+  active Boolean @default(true)
+
+  prices      InsumoPrice[]
+  recipeItems RecipeItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("insumos")
+}
+
+// Histórico de cotações — cada registro é "vi esse preço nesse fornecedor
+// nessa data", nunca sobrescreve um preço anterior. Dá cotação atual (o
+// mais recente por fornecedor) e histórico/tendência de graça.
+model InsumoPrice {
+  id       String @id @default(cuid())
+  insumoId String
+  insumo   Insumo @relation(fields: [insumoId], references: [id], onDelete: Cascade)
+
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id])
+
+  price      Decimal   @db.Decimal(10, 2)
+  isPromo    Boolean   @default(false)
+  validUntil DateTime? // só relevante quando isPromo=true; nulo = preço "normal", sem validade
+
+  recordedAt DateTime @default(now())
+
+  @@index([insumoId])
+  @@map("insumo_prices")
+}
+
+// Ficha técnica — quanto de cada insumo um produto consome pra fazer 1 unidade.
+model RecipeItem {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  insumoId  String
+  insumo    Insumo  @relation(fields: [insumoId], references: [id])
+
+  quantity Decimal @db.Decimal(10, 4)
+
+  @@unique([productId, insumoId])
+  @@map("recipe_items")
 }
 
 // ─── Financeiro ──────────────────────────────

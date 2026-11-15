@@ -6,6 +6,7 @@ import { planRouter } from './plans.routes'
 import { inviteRouter } from './invites.routes'
 import { contactRouter } from './contacts.routes'
 import { productRouter } from './products.routes'
+import { insumoRouter } from './insumos.routes'
 import { invoiceRouter } from './invoices.routes'
 import { orderRouter } from './orders.routes'
 import { eventRouter } from './events.routes'
@@ -23,6 +24,7 @@ router.use('/plans', planRouter)
 router.use('/invites', inviteRouter)
 router.use('/contacts', contactRouter)
 router.use('/products', productRouter)
+router.use('/insumos', insumoRouter)
 router.use('/invoices', invoiceRouter)
 router.use('/orders', orderRouter)
 router.use('/events', eventRouter)
