@@ -17,6 +17,8 @@ router.post('/quick-parse', quickParseLimiter, (req, res) => controller.parseFro
 router.get('/:id', (req, res) => controller.getById(req, res))
 router.post('/', requireActiveSubscription, (req, res) => controller.create(req, res))
 router.patch('/:id', requireActiveSubscription, (req, res) => controller.update(req, res))
+router.post('/:id/recurrence', requireActiveSubscription, (req, res) => controller.makeRecurring(req, res))
+router.delete('/:id/recurrence', requireActiveSubscription, (req, res) => controller.stopRecurring(req, res))
 
 router.delete(
   '/:id',

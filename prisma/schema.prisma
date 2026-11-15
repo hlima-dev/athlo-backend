@@ -212,6 +212,7 @@ model Organization {
   modulePermissions  ModulePermission[]
   taxReminderLogs    TaxReminderLog[]
   insumos            Insumo[]
+  eventRecurrences   EventRecurrence[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -643,11 +644,52 @@ model Event {
   // vezes o mesmo compromisso.
   reminderSentAt DateTime?
 
+  // Presente quando esse compromisso foi gerado (ou é a origem) de uma
+  // rotina semanal — ver EventRecurrence. Cada ocorrência continua sendo
+  // um Event independente (editar/excluir uma não afeta as outras).
+  recurrenceId String?
+  recurrence   EventRecurrence? @relation(fields: [recurrenceId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([organizationId])
   @@map("events")
+}
+
+// Molde de uma rotina semanal ("todo dia X") — independente dos Event
+// que gera, pra continuar gerando mesmo se o compromisso de origem for
+// editado/excluído depois. Parar a rotina (active=false) nunca apaga
+// ocorrências já criadas, só impede novas.
+model EventRecurrence {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  active         Boolean      @default(true)
+
+  title           String
+  description     String?     @db.Text
+  type            EventType
+  location        String?
+  isOnline        Boolean     @default(false)
+  onlineUrl       String?
+  allDay          Boolean     @default(false)
+  dayOfWeek       Int // 0 (domingo) .. 6 (sábado), em UTC
+  startHour       Int // 0-23, em UTC
+  startMinute     Int
+  durationMinutes Int // endDate - startDate do compromisso de origem
+
+  contactId    String?
+  assignedToId String?
+  createdById  String
+
+  events Event[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@map("event_recurrences")
 }
 
 // Assinatura de notificação push do navegador (Web Push) de um usuário

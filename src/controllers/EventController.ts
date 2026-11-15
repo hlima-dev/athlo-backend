@@ -7,10 +7,12 @@ import { NotFoundError } from '../utils/AppError'
 import { optionalUrl } from '../utils/validation'
 import { EventTextParserService } from '../services/EventTextParserService'
 import { AuditLogService } from '../services/AuditLogService'
+import { EventRecurrenceService } from '../services/EventRecurrenceService'
 import { assertContactBelongsToOrg, assertUserBelongsToOrg } from '../utils/tenantValidation'
 
 const eventTextParserService = new EventTextParserService()
 const auditLogService = new AuditLogService()
+const eventRecurrenceService = new EventRecurrenceService()
 
 const quickParseSchema = z.object({
   prompt: z.string().min(3, 'Descreva o compromisso em ao menos algumas palavras'),
@@ -83,6 +85,7 @@ export class EventController {
           createdBy: { select: { id: true, name: true } },
           assignedTo: { select: { id: true, name: true } },
           contact: { select: { id: true, name: true } },
+          recurrence: { select: { active: true } },
         },
       }),
       prisma.event.count({ where }),
@@ -109,6 +112,7 @@ export class EventController {
         createdBy: { select: { id: true, name: true } },
         assignedTo: { select: { id: true, name: true } },
         contact: { select: { id: true, name: true } },
+        recurrence: { select: { active: true } },
       },
     })
 
@@ -167,5 +171,23 @@ export class EventController {
     const { prompt } = quickParseSchema.parse(req.body)
     const draft = eventTextParserService.parse(prompt)
     res.status(200).json(successResponse(draft))
+  }
+
+  async makeRecurring(req: Request, res: Response): Promise<void> {
+    const recurrence = await eventRecurrenceService.create(
+      req.user!.organizationId,
+      String(req.params.id),
+      req.user!.id,
+    )
+    res.status(201).json(successResponse(recurrence, 'Repetição ativada'))
+  }
+
+  async stopRecurring(req: Request, res: Response): Promise<void> {
+    const recurrence = await eventRecurrenceService.deactivate(
+      req.user!.organizationId,
+      String(req.params.id),
+      req.user!.id,
+    )
+    res.status(200).json(successResponse(recurrence, 'Rotina parada'))
   }
 }

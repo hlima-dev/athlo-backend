@@ -20,6 +20,7 @@
     "reminders:overdue": "tsx scripts/markAndRemindOverdueInvoices.ts",
     "reminders:tax": "tsx scripts/sendTaxObligationReminders.ts",
     "backfill:module-permissions": "tsx scripts/backfillModulePermissions.ts",
+    "recurrence:generate": "tsx scripts/generateRecurringEvents.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
