@@ -26,13 +26,13 @@ interface AddInsumoPriceInput {
   validUntil?: Date
 }
 
-interface BestPrice {
+export interface BestPrice {
   price: number
   contactId: string
   contactName: string
 }
 
-type PriceWithContact = {
+export type PriceWithContact = {
   contactId: string
   price: unknown
   isPromo: boolean
@@ -41,12 +41,14 @@ type PriceWithContact = {
   contact: { id: string; name: string }
 }
 
-const priceInclude = { contact: { select: { id: true, name: true } } }
+export const priceInclude = { contact: { select: { id: true, name: true } } }
 
 // Entre todas as cotações já registradas, pega a mais recente por
 // fornecedor (cada fornecedor "vale" só o último preço visto nele) e,
-// dentre essas, a mais barata — ignorando promoção já vencida.
-function computeBestPrice(prices: PriceWithContact[]): BestPrice | null {
+// dentre essas, a mais barata — ignorando promoção já vencida. Reusado
+// pelo ProductService (custo de produção da receita) e pelo OrderService
+// (lucro estimado por item vendido).
+export function computeBestPrice(prices: PriceWithContact[]): BestPrice | null {
   const now = new Date()
   const latestByContact = new Map<string, PriceWithContact>()
   for (const p of prices) {

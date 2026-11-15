@@ -1,8 +1,9 @@
 import { prisma } from '../config/prisma'
-import { NotFoundError } from '../utils/AppError'
+import { NotFoundError, ValidationError } from '../utils/AppError'
 import { paginate, PaginationParams } from '../utils/pagination'
 import { ProductType } from '@prisma/client'
 import { AuditLogService } from './AuditLogService'
+import { computeBestPrice, priceInclude, type PriceWithContact } from './InsumoService'
 
 const auditLogService = new AuditLogService()
 
@@ -15,6 +16,9 @@ interface CreateProductInput {
   active?: boolean
   stockQty?: number | null
   lowStockThreshold?: number | null
+  taxPercent?: number | null
+  paymentFeePercent?: number | null
+  shippingCost?: number | null
 }
 
 type UpdateProductInput = Partial<CreateProductInput>
@@ -23,6 +27,63 @@ interface ListProductsFilter {
   type?: ProductType
   active?: boolean
   search?: string
+}
+
+interface RecipeItemInput {
+  insumoId: string
+  quantity: number
+}
+
+export interface ProductMargin {
+  productionCost: number
+  taxAmount: number
+  paymentFeeAmount: number
+  shippingCost: number
+  netMargin: number
+  netMarginPercent: number
+}
+
+const recipeInclude = {
+  recipeItems: {
+    include: { insumo: { include: { prices: { include: priceInclude } } } },
+  },
+}
+
+type RecipeItemWithInsumo = {
+  id: string
+  insumoId: string
+  quantity: unknown
+  insumo: { name: string; unit: string; prices: PriceWithContact[] }
+}
+
+// Soma, pra cada item da receita, a quantidade usada × o melhor preço
+// vigente do insumo — insumo nunca cotado entra como custo 0 (não quebra
+// o cálculo, só fica subestimado até alguém registrar uma cotação).
+export function calculateProductionCost(recipeItems: RecipeItemWithInsumo[]): number {
+  return recipeItems.reduce((sum, item) => {
+    const best = computeBestPrice(item.insumo.prices)
+    return sum + (best?.price ?? 0) * Number(item.quantity)
+  }, 0)
+}
+
+// Decomposição do preço: preço de venda − custo de produção − imposto −
+// taxa de pagamento − frete = margem líquida. "price" é genérico de
+// propósito — o editor de Produtos usa o preço de catálogo, o Pedido usa
+// o preço efetivamente cobrado naquela venda.
+export function calculateMargin(input: {
+  price: number
+  productionCost: number
+  taxPercent?: unknown
+  paymentFeePercent?: unknown
+  shippingCost?: unknown
+}): ProductMargin {
+  const { price, productionCost } = input
+  const taxAmount = price * (Number(input.taxPercent ?? 0) / 100)
+  const paymentFeeAmount = price * (Number(input.paymentFeePercent ?? 0) / 100)
+  const shippingCost = Number(input.shippingCost ?? 0)
+  const netMargin = price - productionCost - taxAmount - paymentFeeAmount - shippingCost
+  const netMarginPercent = price > 0 ? (netMargin / price) * 100 : 0
+  return { productionCost, taxAmount, paymentFeeAmount, shippingCost, netMargin, netMarginPercent }
 }
 
 export class ProductService {
@@ -87,17 +148,79 @@ export class ProductService {
   }
 
   async findById(organizationId: string, id: string) {
-    const product = await prisma.product.findFirst({ where: { id, organizationId } })
+    const product = await prisma.product.findFirst({
+      where: { id, organizationId },
+      include: recipeInclude,
+    })
 
     if (!product) {
       throw new NotFoundError('Produto')
     }
 
+    const { recipeItems, ...rest } = product
+    const productionCost = calculateProductionCost(recipeItems)
+    const margin = calculateMargin({
+      price: Number(product.price),
+      productionCost,
+      taxPercent: product.taxPercent,
+      paymentFeePercent: product.paymentFeePercent,
+      shippingCost: product.shippingCost,
+    })
+
+    return {
+      ...rest,
+      recipeItems: recipeItems.map((item) => ({
+        id: item.id,
+        insumoId: item.insumoId,
+        insumoName: item.insumo.name,
+        unit: item.insumo.unit,
+        quantity: item.quantity,
+        unitCost: computeBestPrice(item.insumo.prices)?.price ?? null,
+      })),
+      margin,
+    }
+  }
+
+  async updateRecipe(organizationId: string, productId: string, items: RecipeItemInput[], userId?: string) {
+    const product = await this.assertExists(organizationId, productId)
+
+    if (items.length > 0) {
+      const insumoIds = [...new Set(items.map((item) => item.insumoId))]
+      const validCount = await prisma.insumo.count({ where: { id: { in: insumoIds }, organizationId } })
+      if (validCount !== insumoIds.length) {
+        throw new ValidationError('Um ou mais insumos informados não pertencem a esta organização.')
+      }
+    }
+
+    await prisma.$transaction([
+      prisma.recipeItem.deleteMany({ where: { productId } }),
+      prisma.recipeItem.createMany({
+        data: items.map((item) => ({ productId, insumoId: item.insumoId, quantity: item.quantity })),
+      }),
+    ])
+
+    void auditLogService.record({
+      organizationId,
+      userId,
+      entityType: 'Product',
+      entityId: productId,
+      action: 'UPDATE',
+      summary: `Ficha técnica de "${product.name}" atualizada`,
+    })
+
+    return this.findById(organizationId, productId)
+  }
+
+  private async assertExists(organizationId: string, id: string) {
+    const product = await prisma.product.findFirst({ where: { id, organizationId } })
+    if (!product) {
+      throw new NotFoundError('Produto')
+    }
     return product
   }
 
   async update(organizationId: string, id: string, input: UpdateProductInput, userId?: string) {
-    await this.findById(organizationId, id)
+    await this.assertExists(organizationId, id)
     const product = await prisma.product.update({ where: { id }, data: input })
 
     void auditLogService.record({
@@ -113,7 +236,7 @@ export class ProductService {
   }
 
   async delete(organizationId: string, id: string, userId?: string) {
-    const existing = await this.findById(organizationId, id)
+    const existing = await this.assertExists(organizationId, id)
     await prisma.product.delete({ where: { id } })
 
     void auditLogService.record({

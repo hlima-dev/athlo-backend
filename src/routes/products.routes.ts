@@ -16,5 +16,6 @@ router.get('/:id', (req, res) => controller.getById(req, res))
 router.post('/', requireActiveSubscription, (req, res) => controller.create(req, res))
 router.patch('/:id', requireActiveSubscription, (req, res) => controller.update(req, res))
 router.delete('/:id', requireActiveSubscription, (req, res) => controller.delete(req, res))
+router.put('/:id/recipe', requireActiveSubscription, (req, res) => controller.updateRecipe(req, res))
 
 export { router as productRouter }

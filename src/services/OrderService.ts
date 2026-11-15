@@ -5,6 +5,8 @@ import { assertContactBelongsToOrg } from '../utils/tenantValidation'
 import { EmailService } from './EmailService'
 import { AuditLogService } from './AuditLogService'
 import { InvoiceService } from './InvoiceService'
+import { calculateMargin, calculateProductionCost } from './ProductService'
+import { priceInclude } from './InsumoService'
 import {
   InvoiceStatus,
   InvoiceType,
@@ -74,6 +76,65 @@ const orderInclude = {
   operator: { select: { id: true, name: true } },
   items: { include: { product: { select: { id: true, name: true } } } },
   invoice: { select: { id: true } },
+}
+
+// Só usado por findAll/findById (exibição) — traz o suficiente da ficha
+// técnica de cada produto vendido pra calcular o lucro estimado do item.
+const orderIncludeWithMargin = {
+  contact: { select: { id: true, name: true, phone: true, email: true } },
+  operator: { select: { id: true, name: true } },
+  items: {
+    include: {
+      product: {
+        select: {
+          id: true,
+          name: true,
+          taxPercent: true,
+          paymentFeePercent: true,
+          shippingCost: true,
+          recipeItems: {
+            include: { insumo: { include: { prices: { include: priceInclude } } } },
+          },
+        },
+      },
+    },
+  },
+  invoice: { select: { id: true } },
+}
+
+type OrderWithMarginItems = Prisma.OrderGetPayload<{ include: typeof orderIncludeWithMargin }>
+
+// Lucro estimado por item vendido = margem líquida por unidade (preço
+// efetivamente cobrado no pedido, não o preço de catálogo) × quantidade.
+// Nulo quando o produto não tem ficha técnica cadastrada ainda.
+function attachEstimatedProfit(order: OrderWithMarginItems) {
+  return {
+    ...order,
+    items: order.items.map((item) => {
+      if (!item.product || item.product.recipeItems.length === 0) {
+        return {
+          ...item,
+          product: item.product ? { id: item.product.id, name: item.product.name } : null,
+          estimatedProfit: null as number | null,
+        }
+      }
+
+      const productionCost = calculateProductionCost(item.product.recipeItems)
+      const margin = calculateMargin({
+        price: Number(item.unitPrice),
+        productionCost,
+        taxPercent: item.product.taxPercent,
+        paymentFeePercent: item.product.paymentFeePercent,
+        shippingCost: item.product.shippingCost,
+      })
+
+      return {
+        ...item,
+        product: { id: item.product.id, name: item.product.name },
+        estimatedProfit: margin.netMargin * Number(item.quantity),
+      }
+    }),
+  }
 }
 
 export class OrderService {
@@ -241,7 +302,7 @@ export class OrderService {
         skip: pagination.skip,
         take: pagination.limit,
         orderBy: { createdAt: 'desc' },
-        include: orderInclude,
+        include: orderIncludeWithMargin,
       }),
       prisma.order.count({ where }),
       // Os números abaixo respeitam o mesmo filtro da listagem (período,
@@ -254,7 +315,7 @@ export class OrderService {
     ])
 
     return {
-      ...paginate(orders, total, pagination),
+      ...paginate(orders.map(attachEstimatedProfit), total, pagination),
       summary: {
         total,
         open: openCount,
@@ -265,6 +326,22 @@ export class OrderService {
   }
 
   async findById(organizationId: string, id: string) {
+    const order = await prisma.order.findFirst({
+      where: { id, organizationId },
+      include: orderIncludeWithMargin,
+    })
+
+    if (!order) {
+      throw new NotFoundError('Pedido')
+    }
+
+    return attachEstimatedProfit(order)
+  }
+
+  // Versão leve (sem ficha técnica/margem) usada internamente por
+  // update/updateStatus/delete — só precisam de status/itens pra lógica
+  // de estoque e fatura, não do cálculo de lucro estimado.
+  private async getRaw(organizationId: string, id: string) {
     const order = await prisma.order.findFirst({
       where: { id, organizationId },
       include: orderInclude,
@@ -278,7 +355,7 @@ export class OrderService {
   }
 
   async update(organizationId: string, id: string, input: UpdateOrderInput, userId?: string) {
-    const existing = await this.findById(organizationId, id)
+    const existing = await this.getRaw(organizationId, id)
     await assertContactBelongsToOrg(organizationId, input.contactId)
 
     const data: Record<string, unknown> = {
@@ -352,7 +429,7 @@ export class OrderService {
   }
 
   async updateStatus(organizationId: string, id: string, status: OrderStatus, userId?: string) {
-    const existing = await this.findById(organizationId, id)
+    const existing = await this.getRaw(organizationId, id)
 
     const order = await prisma.$transaction(async (tx) => {
       if (existing.status !== OrderStatus.CANCELED && status === OrderStatus.CANCELED) {
@@ -399,7 +476,7 @@ export class OrderService {
   }
 
   async delete(organizationId: string, id: string, userId?: string) {
-    const existing = await this.findById(organizationId, id)
+    const existing = await this.getRaw(organizationId, id)
 
     await prisma.$transaction(async (tx) => {
       if (existing.status !== OrderStatus.CANCELED) {

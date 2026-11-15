@@ -16,9 +16,21 @@ const createProductSchema = z.object({
   active: z.boolean().optional(),
   stockQty: z.number().int().nonnegative().nullable().optional(),
   lowStockThreshold: z.number().int().nonnegative().nullable().optional(),
+  taxPercent: z.number().min(0).max(100).nullable().optional(),
+  paymentFeePercent: z.number().min(0).max(100).nullable().optional(),
+  shippingCost: z.number().nonnegative().nullable().optional(),
 })
 
 const updateProductSchema = createProductSchema.partial()
+
+const updateRecipeSchema = z.object({
+  items: z.array(
+    z.object({
+      insumoId: z.string().min(1),
+      quantity: z.number().positive(),
+    }),
+  ),
+})
 
 export class ProductController {
   async create(req: Request, res: Response): Promise<void> {
@@ -54,5 +66,16 @@ export class ProductController {
   async delete(req: Request, res: Response): Promise<void> {
     await productService.delete(req.user!.organizationId, String(req.params.id), req.user!.id)
     res.status(204).send()
+  }
+
+  async updateRecipe(req: Request, res: Response): Promise<void> {
+    const data = updateRecipeSchema.parse(req.body)
+    const product = await productService.updateRecipe(
+      req.user!.organizationId,
+      String(req.params.id),
+      data.items,
+      req.user!.id,
+    )
+    res.status(200).json(successResponse(product, 'Ficha técnica atualizada com sucesso'))
   }
 }

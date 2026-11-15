@@ -195,3 +195,63 @@ describe('OrderService — baixa automática de estoque', () => {
     })
   })
 })
+
+describe('OrderService.findById — lucro estimado por item', () => {
+  it('retorna estimatedProfit nulo quando o produto não tem ficha técnica', async () => {
+    mockPrisma.order.findFirst.mockResolvedValue({
+      ...baseOrder,
+      items: [
+        {
+          id: 'item_1',
+          quantity: 2,
+          unitPrice: 10,
+          product: { id: 'prod_1', name: 'Caneca', taxPercent: null, paymentFeePercent: null, shippingCost: null, recipeItems: [] },
+        },
+      ],
+    })
+
+    const result = await orderService.findById('org_1', 'order_1')
+
+    expect(result.items[0].estimatedProfit).toBeNull()
+    expect(result.items[0].product).toEqual({ id: 'prod_1', name: 'Caneca' })
+  })
+
+  it('calcula o lucro usando o preço efetivamente cobrado no pedido, não o preço de catálogo', async () => {
+    mockPrisma.order.findFirst.mockResolvedValue({
+      ...baseOrder,
+      items: [
+        {
+          id: 'item_1',
+          quantity: 3,
+          unitPrice: 8, // vendido com desconto em relação ao catálogo
+          product: {
+            id: 'prod_1',
+            name: 'Brigadeiro',
+            taxPercent: null,
+            paymentFeePercent: null,
+            shippingCost: null,
+            recipeItems: [
+              {
+                id: 'ri_1',
+                insumoId: 'insumo_1',
+                quantity: 1,
+                insumo: {
+                  name: 'Chocolate',
+                  unit: 'kg',
+                  prices: [
+                    { contactId: 'c1', price: 2, isPromo: false, validUntil: null, recordedAt: new Date(), contact: { id: 'c1', name: 'Fornecedor A' } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    const result = await orderService.findById('org_1', 'order_1')
+
+    // margem por unidade = 8 (preço vendido) - 2 (custo) = 6; × 3 unidades = 18
+    expect(result.items[0].estimatedProfit).toBe(18)
+  })
+})
