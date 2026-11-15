@@ -4,7 +4,15 @@ import { OrderPaymentStatus, OrderStatus } from '@prisma/client'
 
 const mockPrisma = vi.hoisted(() => {
   const client = {
-    order: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn(), delete: vi.fn() },
+    order: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+      aggregate: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
+    },
     orderItem: { deleteMany: vi.fn() },
     invoice: { findUnique: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
     contact: { findFirst: vi.fn() },
@@ -253,5 +261,63 @@ describe('OrderService.findById — lucro estimado por item', () => {
 
     // margem por unidade = 8 (preço vendido) - 2 (custo) = 6; × 3 unidades = 18
     expect(result.items[0].estimatedProfit).toBe(18)
+  })
+})
+
+describe('OrderService.update — needsItemReview', () => {
+  it('zera needsItemReview ao editar os itens do pedido', async () => {
+    mockPrisma.order.findFirst.mockResolvedValue({
+      ...baseOrder,
+      needsItemReview: true,
+      items: [],
+    })
+    mockPrisma.order.update.mockResolvedValue({ ...baseOrder, needsItemReview: false })
+
+    await orderService.update(
+      'org_1',
+      'order_1',
+      { items: [{ name: 'Brigadeiro', quantity: 2, unitPrice: 5 }] },
+      'user_1',
+    )
+
+    const updateCall = mockPrisma.order.update.mock.calls[0][0]
+    expect(updateCall.data.needsItemReview).toBe(false)
+  })
+
+  it('não mexe em needsItemReview quando os itens não são alterados', async () => {
+    mockPrisma.order.findFirst.mockResolvedValue({ ...baseOrder, needsItemReview: true, items: [] })
+    mockPrisma.order.update.mockResolvedValue(baseOrder)
+
+    await orderService.update('org_1', 'order_1', { customerName: 'Novo nome' }, 'user_1')
+
+    const updateCall = mockPrisma.order.update.mock.calls[0][0]
+    expect(updateCall.data.needsItemReview).toBeUndefined()
+  })
+})
+
+describe('OrderService.findAll — filtro needsReview', () => {
+  it('aplica needsItemReview no where da listagem, mas o resumo "a identificar" ignora o filtro atual', async () => {
+    mockPrisma.order.findMany.mockResolvedValue([])
+    mockPrisma.order.count.mockResolvedValue(0)
+    mockPrisma.order.aggregate.mockResolvedValue({ _sum: { total: 0 } })
+
+    // Combina needsReview com outro filtro (status) pra distinguir a
+    // contagem "total" (respeita todos os filtros) da contagem "a
+    // identificar" do resumo (sempre org inteira, sem o filtro de status).
+    await orderService.findAll(
+      'org_1',
+      { needsReview: true, status: OrderStatus.DELIVERED },
+      { page: 1, limit: 20, skip: 0 },
+    )
+
+    const findManyCall = mockPrisma.order.findMany.mock.calls[0][0]
+    expect(findManyCall.where.needsItemReview).toBe(true)
+    expect(findManyCall.where.status).toBe(OrderStatus.DELIVERED)
+
+    // Última chamada a order.count é a do resumo "a identificar" — sem o
+    // filtro de status que foi passado pra listagem.
+    const countCalls = mockPrisma.order.count.mock.calls
+    const needsReviewSummaryCall = countCalls[countCalls.length - 1][0]
+    expect(needsReviewSummaryCall).toEqual({ where: { organizationId: 'org_1', needsItemReview: true } })
   })
 })

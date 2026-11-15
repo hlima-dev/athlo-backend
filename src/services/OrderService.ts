@@ -54,6 +54,11 @@ interface CreateOrderInput {
   notes?: string
   scheduledAt?: Date
   items: OrderItemInput[]
+  // Só usados pelo pedido automático gerado a partir de um PIX recebido
+  // no Mercado Pago (ver MercadoPagoService) — nunca enviados pela tela
+  // de criação/edição manual.
+  needsItemReview?: boolean
+  mercadoPagoPaymentId?: string
 }
 
 type UpdateOrderInput = Partial<CreateOrderInput>
@@ -65,6 +70,7 @@ interface ListOrdersFilter {
   search?: string
   from?: Date
   to?: Date
+  needsReview?: boolean
 }
 
 function computeTotal(items: OrderItemInput[]) {
@@ -248,6 +254,8 @@ export class OrderService {
           notes: input.notes,
           scheduledAt: input.scheduledAt,
           total,
+          needsItemReview: input.needsItemReview,
+          mercadoPagoPaymentId: input.mercadoPagoPaymentId,
           items: {
             create: input.items!.map((item) => ({
               productId: item.productId,
@@ -294,9 +302,10 @@ export class OrderService {
           ...(filter.to && { lte: filter.to }),
         },
       }),
+      ...(filter.needsReview !== undefined && { needsItemReview: filter.needsReview }),
     }
 
-    const [orders, total, openCount, deliveredCount, revenueAgg] = await Promise.all([
+    const [orders, total, openCount, deliveredCount, revenueAgg, needsReviewCount] = await Promise.all([
       prisma.order.findMany({
         where,
         skip: pagination.skip,
@@ -312,6 +321,10 @@ export class OrderService {
       prisma.order.count({ where: { ...where, status: { notIn: [OrderStatus.DELIVERED, OrderStatus.CANCELED] } } }),
       prisma.order.count({ where: { ...where, status: OrderStatus.DELIVERED } }),
       prisma.order.aggregate({ where: { ...where, paymentStatus: OrderPaymentStatus.PAID }, _sum: { total: true } }),
+      // Sempre da organização inteira (não respeita o filtro atual) —
+      // é um alerta ("tem X pedidos pra identificar"), não deve sumir
+      // quando alguém aplica outro filtro na lista.
+      prisma.order.count({ where: { organizationId, needsItemReview: true } }),
     ])
 
     return {
@@ -321,6 +334,7 @@ export class OrderService {
         open: openCount,
         delivered: deliveredCount,
         revenue: Number(revenueAgg._sum.total ?? 0),
+        needsReview: needsReviewCount,
       },
     }
   }
@@ -378,6 +392,9 @@ export class OrderService {
     const itemsChanged = !!(input.items && input.items.length > 0)
     if (itemsChanged) {
       data.total = computeTotal(input.items!)
+      // Editar os itens é o próprio sinal de "já identifiquei a venda" —
+      // zera o aviso de um pedido criado automaticamente via Mercado Pago.
+      data.needsItemReview = false
     }
 
     const existingStatus = existing.status

@@ -27,6 +27,8 @@ interface UpdateOrganizationInput {
   contactsGoal?: number | null
   eventsGoal?: number | null
   revenueGoal?: number | null
+  mercadoPagoAccessToken?: string | null
+  mercadoPagoWebhookSecret?: string | null
 }
 
 export class OrganizationService {
@@ -43,12 +45,20 @@ export class OrganizationService {
       throw new NotFoundError('Empresa')
     }
 
-    return organization
+    // O token/secret do Mercado Pago nunca saem da API — só um booleano
+    // dizendo se a integração está conectada.
+    const { mercadoPagoAccessToken, mercadoPagoWebhookSecret, ...rest } = organization
+    return { ...rest, mercadoPagoConnected: !!mercadoPagoAccessToken && !!mercadoPagoWebhookSecret }
   }
 
   async update(id: string, input: UpdateOrganizationInput, userId?: string) {
     await this.findById(id)
-    const organization = await prisma.organization.update({ where: { id }, data: input })
+    const updated = await prisma.organization.update({ where: { id }, data: input })
+    const { mercadoPagoAccessToken, mercadoPagoWebhookSecret, ...rest } = updated
+    const organization = {
+      ...rest,
+      mercadoPagoConnected: !!mercadoPagoAccessToken && !!mercadoPagoWebhookSecret,
+    }
 
     void auditLogService.record({
       organizationId: id,

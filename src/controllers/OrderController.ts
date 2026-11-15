@@ -96,6 +96,7 @@ export class OrderController {
       search: req.query.search as string | undefined,
       from: req.query.from ? new Date(String(req.query.from)) : undefined,
       to: req.query.to ? new Date(String(req.query.to)) : undefined,
+      needsReview: req.query.needsReview !== undefined ? req.query.needsReview === 'true' : undefined,
     }
 
     const result = await orderService.findAll(req.user!.organizationId, filter, pagination)

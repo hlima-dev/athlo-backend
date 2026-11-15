@@ -138,6 +138,7 @@ enum OrderOrigin {
   MANUAL
   CALLCENTER
   SITE
+  MERCADO_PAGO
 }
 
 enum TaxRegime {
@@ -191,6 +192,13 @@ model Organization {
   contactsGoal Int?
   eventsGoal   Int?
   revenueGoal  Decimal? @db.Decimal(12, 2)
+
+  // Integração Mercado Pago (webhook de pagamento → pedido automático).
+  // Texto puro — projeto não tem criptografia em repouso hoje, mesma
+  // postura já usada pros secrets do Stripe (env var global). Nunca
+  // devolvido pelo GET /organization/me, só um booleano "conectado".
+  mercadoPagoAccessToken   String?
+  mercadoPagoWebhookSecret String?
 
   users              User[]
   memberships        Membership[]
@@ -564,6 +572,12 @@ model Order {
 
   operatorId String?
   operator   User?   @relation("OrderOperator", fields: [operatorId], references: [id])
+
+  // Pedido criado automaticamente a partir de um PIX recebido no Mercado
+  // Pago (ver MercadoPagoService) — item ainda é um placeholder até o
+  // usuário identificar o que foi vendido de verdade.
+  mercadoPagoPaymentId String?  @unique
+  needsItemReview      Boolean  @default(false)
 
   items OrderItem[]
 

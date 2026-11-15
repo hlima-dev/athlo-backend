@@ -12,6 +12,7 @@ import { requestLogger } from './middlewares/requestLogger'
 import { generalLimiter } from './middlewares/rateLimiter'
 import { verifyCsrf } from './middlewares/verifyCsrf'
 import { StripeWebhookController } from './controllers/StripeWebhookController'
+import { MercadoPagoWebhookController } from './controllers/MercadoPagoWebhookController'
 
 export const app = express()
 
@@ -68,6 +69,20 @@ app.post(
 
 app.use(express.json({ limit: '2mb' }))
 app.use(express.urlencoded({ extended: true, limit: '2mb' }))
+
+// Webhook do Mercado Pago (pagamento → pedido automático) é por
+// organização, não por plataforma inteira como o do Stripe acima — o
+// organizationId vai na própria URL (configurada por empresa em
+// Configurações). A assinatura do Mercado Pago não depende do corpo
+// bruto, então esta rota já pode vir depois do express.json() normal;
+// só precisa escapar de authenticate/CSRF, por isso fica fora do router
+// autenticado em src/routes/index.ts.
+const mercadoPagoWebhookController = new MercadoPagoWebhookController()
+app.post(
+  '/api/v1/webhooks/mercadopago/:organizationId',
+  (req, res) => mercadoPagoWebhookController.handle(req, res),
+)
+
 app.use(requestLogger)
 app.use(verifyCsrf)
 

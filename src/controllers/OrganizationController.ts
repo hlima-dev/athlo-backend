@@ -26,6 +26,8 @@ const updateOrganizationSchema = z.object({
   contactsGoal: z.number().int().positive().nullable().optional(),
   eventsGoal: z.number().int().positive().nullable().optional(),
   revenueGoal: z.number().positive().nullable().optional(),
+  mercadoPagoAccessToken: z.string().min(1).nullable().optional(),
+  mercadoPagoWebhookSecret: z.string().min(1).nullable().optional(),
 })
 
 const updatePermissionsSchema = z.object({
